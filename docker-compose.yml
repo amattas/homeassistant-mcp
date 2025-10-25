@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  homeassistant-mcp:
+    build: .
+    stdin_open: true
+    tty: true
+    environment:
+      # These can be overridden by creating a .env file
+      - DEBUG=${DEBUG:-false}
+      - HA_URL=${HA_URL}
+      - HA_TOKEN=${HA_TOKEN}
+      - HA_VERIFY_SSL=${HA_VERIFY_SSL:-true}
+      # Redis cache (optional)
+      - REDIS_HOST=${REDIS_HOST:-}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_USE_SSL=${REDIS_USE_SSL:-false}
