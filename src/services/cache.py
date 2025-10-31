@@ -1,4 +1,4 @@
-"""Redis caching layer for MattasMCP services"""
+"""Redis caching layer for Home Assistant MCP services"""
 
 import os
 import json
@@ -312,10 +312,10 @@ class RedisCache:
     def delete_pattern(self, pattern: str) -> int:
         """
         Delete all keys matching pattern
-        
+
         Args:
-            pattern: Redis key pattern (e.g., "todoist:tasks:*")
-            
+            pattern: Redis key pattern (e.g., "ha:states:*")
+
         Returns:
             Number of keys deleted
         """
@@ -411,13 +411,13 @@ def cache_key_generator(
 ) -> str:
     """
     Generate cache key from function arguments
-    
+
     Args:
-        prefix: Key prefix (e.g., "todoist:tasks")
+        prefix: Key prefix (e.g., "ha:states")
         version: Cache version
         *args: Positional arguments
         **kwargs: Keyword arguments
-        
+
     Returns:
         Cache key string
     """
@@ -448,17 +448,17 @@ def cache_aside(
 ):
     """
     Decorator for cache-aside pattern
-    
+
     Args:
         config: Cache configuration
         cache_instance: Redis cache instance to use
         key_func: Custom key generation function
-        
+
     Example:
-        @cache_aside(CacheConfig(ttl=60, key_prefix="todoist:tasks"))
-        def get_tasks(project_id: str):
+        @cache_aside(CacheConfig(ttl=60, key_prefix="ha:states"))
+        def get_states(entity_id: str):
             # Expensive API call
-            return api.get_tasks(project_id)
+            return api.get_states(entity_id)
     """
     if config is None:
         config = CacheConfig()
@@ -568,18 +568,12 @@ def _get_cache_ttl(env_var: str, default: int) -> int:
 # TTL constants for different data types (in seconds)
 class CacheTTL:
     """
-    Standard TTL values for different data types.
-    
+    Standard TTL values for Home Assistant data types.
+
     All values can be overridden via environment variables by prefixing with CACHE_TTL_
     For example: CACHE_TTL_HA_STATES=5 will set HA_STATES to 5 seconds
-    
+
     Environment Variables:
-        CACHE_TTL_TODOIST_TASKS: Task list cache (default: 60 seconds)
-        CACHE_TTL_TODOIST_PROJECTS: Project list cache (default: 300 seconds)
-        CACHE_TTL_TODOIST_LABELS: Label list cache (default: 600 seconds)
-        CACHE_TTL_TODOIST_SECTIONS: Section list cache (default: 300 seconds)
-        CACHE_TTL_TODOIST_COMMENTS: Comment cache (default: 120 seconds)
-        
         CACHE_TTL_HA_STATES: Entity states cache (default: 3 seconds)
         CACHE_TTL_HA_SINGLE_STATE: Single entity state (default: 2 seconds)
         CACHE_TTL_HA_DEVICE_LIST: Device metadata cache (default: 1800 seconds)
@@ -587,19 +581,8 @@ class CacheTTL:
         CACHE_TTL_HA_AREAS: Area list cache (default: 3600 seconds)
         CACHE_TTL_HA_SERVICES: Service list cache (default: 3600 seconds)
         CACHE_TTL_HA_HISTORY: History data cache (default: 300 seconds)
-        
-        CACHE_TTL_CALENDAR_EVENTS: Calendar events cache (default: 900 seconds)
-        CACHE_TTL_CALENDAR_INFO: Calendar info cache (default: 1800 seconds)
-        CACHE_TTL_CALENDAR_FEED: Calendar feed cache (default: 600 seconds)
     """
-    
-    # Todoist
-    TODOIST_TASKS = _get_cache_ttl("TODOIST_TASKS", 60)  # 1 minute default
-    TODOIST_PROJECTS = _get_cache_ttl("TODOIST_PROJECTS", 300)  # 5 minutes default
-    TODOIST_LABELS = _get_cache_ttl("TODOIST_LABELS", 600)  # 10 minutes default
-    TODOIST_SECTIONS = _get_cache_ttl("TODOIST_SECTIONS", 300)  # 5 minutes default
-    TODOIST_COMMENTS = _get_cache_ttl("TODOIST_COMMENTS", 120)  # 2 minutes default
-    
+
     # Home Assistant
     HA_STATES = _get_cache_ttl("HA_STATES", 3)  # 3 seconds default (real-time critical)
     HA_SINGLE_STATE = _get_cache_ttl("HA_SINGLE_STATE", 2)  # 2 seconds default
@@ -608,8 +591,3 @@ class CacheTTL:
     HA_AREAS = _get_cache_ttl("HA_AREAS", 3600)  # 1 hour default
     HA_SERVICES = _get_cache_ttl("HA_SERVICES", 3600)  # 1 hour default
     HA_HISTORY = _get_cache_ttl("HA_HISTORY", 300)  # 5 minutes default
-    
-    # Calendar
-    CALENDAR_EVENTS = _get_cache_ttl("CALENDAR_EVENTS", 900)  # 15 minutes default
-    CALENDAR_INFO = _get_cache_ttl("CALENDAR_INFO", 1800)  # 30 minutes default
-    CALENDAR_FEED = _get_cache_ttl("CALENDAR_FEED", 600)  # 10 minutes default
