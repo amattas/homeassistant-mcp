@@ -4,7 +4,7 @@ import os
 import logging
 import json
 import requests
-from services.cache import cache_aside, CacheConfig, CacheTTL
+from .cache import cache_aside, CacheConfig, CacheTTL
 try:
     import websocket
 except ImportError:
