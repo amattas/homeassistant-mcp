@@ -35,7 +35,6 @@ if api_key:
 
     from fastapi import FastAPI, Request, HTTPException
     from fastapi.responses import JSONResponse
-    from starlette.middleware.base import BaseHTTPMiddleware
     from contextlib import asynccontextmanager
     import uvicorn
     from .server import mcp, get_ha_service, get_cache_service, initialize_services
@@ -87,26 +86,37 @@ if api_key:
         lifespan=mcp_app.lifespan  # REQUIRED: Connect MCP app's lifespan
     )
 
-    # Security middleware to add headers
-    class SecurityMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next):
-            response = await call_next(request)
+    # Security middleware to add headers (pure ASGI for streaming compatibility)
+    class SecurityMiddleware:
+        def __init__(self, app):
+            self.app = app
 
-            # Add security headers
-            response.headers["X-Content-Type-Options"] = "nosniff"
-            response.headers["X-Frame-Options"] = "DENY"
-            response.headers["X-XSS-Protection"] = "1; mode=block"
-            response.headers["Referrer-Policy"] = "no-referrer"
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
-            response.headers["Content-Security-Policy"] = "default-src 'none'"
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                await self.app(scope, receive, send)
+                return
 
-            # Remove server identification headers if they exist
-            if "server" in response.headers:
-                del response.headers["server"]
-            if "x-powered-by" in response.headers:
-                del response.headers["x-powered-by"]
+            async def send_with_headers(message):
+                if message["type"] == "http.response.start":
+                    headers = dict(message.get("headers", []))
 
-            return response
+                    # Add security headers
+                    headers[b"x-content-type-options"] = b"nosniff"
+                    headers[b"x-frame-options"] = b"DENY"
+                    headers[b"x-xss-protection"] = b"1; mode=block"
+                    headers[b"referrer-policy"] = b"no-referrer"
+                    headers[b"cache-control"] = b"no-store, no-cache, must-revalidate, private"
+                    headers[b"content-security-policy"] = b"default-src 'none'"
+
+                    # Remove server identification headers if they exist
+                    headers.pop(b"server", None)
+                    headers.pop(b"x-powered-by", None)
+
+                    message["headers"] = list(headers.items())
+
+                await send(message)
+
+            await self.app(scope, receive, send_with_headers)
 
     # Add security middleware
     app.add_middleware(SecurityMiddleware)
