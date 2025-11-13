@@ -47,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
-mcp = FastMCP(name="HomeAssistantMCP")
+mcp = FastMCP(name="HomeAssistantMCP", stateless_http=True)
 
 # Service instances (will be initialized on first use)
 _ha_service: Optional[HomeAssistantClient] = None
