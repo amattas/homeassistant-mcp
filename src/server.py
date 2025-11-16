@@ -5,7 +5,6 @@ A specialized MCP server for Home Assistant device control and monitoring
 """
 
 import os
-import sys
 import logging
 from typing import Optional, Dict, Any
 from dotenv import dotenv_values
@@ -23,14 +22,14 @@ from .services.cache import RedisCache
 config: Dict[str, str] = {}
 
 # Load from project directory if available
-for filename in ('.env', '.env.local'):
+for filename in (".env", ".env.local"):
     path = Path(filename)
     if path.exists():
         config.update(dotenv_values(path))
 
 # Also check the script's directory (supports running from elsewhere)
 script_dir = Path(__file__).parent
-for filename in ('.env', '.env.local'):
+for filename in (".env", ".env.local"):
     path = script_dir / filename
     if path.exists():
         config.update(dotenv_values(path))
@@ -41,8 +40,10 @@ for key, value in config.items():
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG if os.getenv('DEBUG', 'false').lower() == 'true' else logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=(
+        logging.DEBUG if os.getenv("DEBUG", "false").lower() == "true" else logging.INFO
+    ),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -59,15 +60,17 @@ def get_ha_service() -> Optional[HomeAssistantClient]:
     global _ha_service
 
     if _ha_service is None:
-        ha_url = os.getenv('HA_URL')
-        ha_token = os.getenv('HA_TOKEN')
+        ha_url = os.getenv("HA_URL")
+        ha_token = os.getenv("HA_TOKEN")
 
         if not ha_url or not ha_token:
-            logger.warning("Home Assistant not configured. Set HA_URL and HA_TOKEN in environment.")
+            logger.warning(
+                "Home Assistant not configured. Set HA_URL and HA_TOKEN in environment."
+            )
             return None
 
         try:
-            verify_ssl = os.getenv('HA_VERIFY_SSL', 'true').lower() == 'true'
+            verify_ssl = os.getenv("HA_VERIFY_SSL", "true").lower() == "true"
             # Get cache service if available
             cache = get_cache_service()
             _ha_service = HomeAssistantClient(
@@ -75,14 +78,19 @@ def get_ha_service() -> Optional[HomeAssistantClient]:
                 access_token=ha_token,
                 verify_ssl=verify_ssl,
                 mcp=mcp,  # Pass MCP instance to service
-                cache=cache  # Pass cache instance to service
+                cache=cache,  # Pass cache instance to service
             )
             # Test connection
             result = _ha_service.test_connection()
-            if result.get('status') == 'success':
-                logger.info(f"Initialized Home Assistant service ({result.get('connection_type')})" + (" with caching" if cache else ""))
+            if result.get("status") == "success":
+                logger.info(
+                    f"Initialized Home Assistant service ({result.get('connection_type')})"
+                    + (" with caching" if cache else "")
+                )
             else:
-                logger.error(f"Home Assistant connection test failed: {result.get('error')}")
+                logger.error(
+                    f"Home Assistant connection test failed: {result.get('error')}"
+                )
                 _ha_service = None
                 return None
         except Exception as e:
@@ -129,24 +137,20 @@ def get_cache_service() -> Optional[RedisCache]:
 ## Related Tools
 • Use `get_server_config` for configuration details""",
     title="Server Status",
-    annotations={"title": "Server Status"}
+    annotations={"title": "Server Status"},
 )
 def get_server_status() -> Dict[str, Any]:
     """Get the status of the Home Assistant service"""
-    status = {
-        "server": "HomeAssistantMCP",
-        "version": "1.0.0",
-        "services": {}
-    }
+    status = {"server": "HomeAssistantMCP", "version": "1.0.0", "services": {}}
 
     # Check Home Assistant service
     ha_service = get_ha_service()
     if ha_service:
         test = ha_service.test_connection()
-        if test.get('status') == 'success':
+        if test.get("status") == "success":
             status["services"]["homeassistant"] = {
                 "status": "active",
-                "connection_type": test.get('connection_type')
+                "connection_type": test.get("connection_type"),
             }
         else:
             status["services"]["homeassistant"] = {"status": "error"}
@@ -176,19 +180,20 @@ def get_server_status() -> Dict[str, Any]:
 
 ⚠️ **Note**: Sensitive values like API keys are not exposed""",
     title="Server Configuration",
-    annotations={"title": "Server Configuration"}
+    annotations={"title": "Server Configuration"},
 )
 def get_server_config() -> Dict[str, Any]:
     """Get the current server configuration (non-sensitive)"""
     return {
-        "debug_mode": os.getenv('DEBUG', 'false').lower() == 'true',
-        "homeassistant_configured": bool(os.getenv('HA_URL') and os.getenv('HA_TOKEN')),
-        "ha_verify_ssl": os.getenv('HA_VERIFY_SSL', 'true').lower() == 'true',
-        "timezone": os.getenv('TIMEZONE', 'UTC')
+        "debug_mode": os.getenv("DEBUG", "false").lower() == "true",
+        "homeassistant_configured": bool(os.getenv("HA_URL") and os.getenv("HA_TOKEN")),
+        "ha_verify_ssl": os.getenv("HA_VERIFY_SSL", "true").lower() == "true",
+        "timezone": os.getenv("TIMEZONE", "UTC"),
     }
 
 
 # ==================== Current DateTime Tool ====================
+
 
 @mcp.tool(
     name="get_current_datetime",
@@ -214,19 +219,19 @@ def get_server_config() -> Dict[str, Any]:
 
 ⚠️ **Note**: The timezone is configured via the TIMEZONE environment variable (default: UTC)""",
     title="Current Date & Time",
-    annotations={"title": "Current Date & Time"}
+    annotations={"title": "Current Date & Time"},
 )
 def get_current_datetime() -> Dict[str, Any]:
     """Get the current date and time in the configured timezone"""
     # Get timezone from environment variable, default to UTC
-    timezone_str = os.getenv('TIMEZONE', 'UTC')
+    timezone_str = os.getenv("TIMEZONE", "UTC")
 
     try:
         tz = ZoneInfo(timezone_str)
     except Exception as e:
         logger.warning(f"Invalid timezone '{timezone_str}': {e}. Falling back to UTC.")
-        tz = ZoneInfo('UTC')
-        timezone_str = 'UTC'
+        tz = ZoneInfo("UTC")
+        timezone_str = "UTC"
 
     # Get current datetime in the configured timezone
     now = datetime.now(tz)
@@ -239,11 +244,12 @@ def get_current_datetime() -> Dict[str, Any]:
         "utc_offset": now.strftime("%z"),
         "timezone_abbr": now.strftime("%Z"),
         "day_of_week": now.strftime("%A"),
-        "timestamp": int(now.timestamp())
+        "timestamp": int(now.timestamp()),
     }
 
 
 # ==================== Cache Management Tools ====================
+
 
 @mcp.tool(
     name="get_cache_stats",
@@ -265,7 +271,7 @@ def get_current_datetime() -> Dict[str, Any]:
 • Use `clear_cache` to clear cache entries
 • Use `get_cache_info` for Redis server info""",
     title="Cache Statistics",
-    annotations={"title": "Cache Statistics"}
+    annotations={"title": "Cache Statistics"},
 )
 def get_cache_stats() -> Dict[str, Any]:
     """Get cache statistics"""
@@ -295,7 +301,7 @@ def get_cache_stats() -> Dict[str, Any]:
 
 ⚠️ **Warning**: Clearing all cache may impact performance temporarily""",
     title="Clear Cache",
-    annotations={"title": "Clear Cache"}
+    annotations={"title": "Clear Cache"},
 )
 def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
     """Clear cache entries"""
@@ -306,23 +312,13 @@ def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
     if pattern:
         # Clear by pattern
         deleted = cache.delete_pattern(pattern)
-        return {
-            "status": "success",
-            "pattern": pattern,
-            "keys_deleted": deleted
-        }
+        return {"status": "success", "pattern": pattern, "keys_deleted": deleted}
     else:
         # Clear all cache
         if cache.flush_all():
-            return {
-                "status": "success",
-                "message": "All cache cleared"
-            }
+            return {"status": "success", "message": "All cache cleared"}
         else:
-            return {
-                "status": "error",
-                "message": "Failed to clear cache"
-            }
+            return {"status": "error", "message": "Failed to clear cache"}
 
 
 @mcp.tool(
@@ -345,7 +341,7 @@ def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
 • Use `get_cache_stats` for performance metrics
 • Use `clear_cache` to clear cache entries""",
     title="Cache Information",
-    annotations={"title": "Cache Information"}
+    annotations={"title": "Cache Information"},
 )
 def get_cache_info() -> Dict[str, Any]:
     """Get Redis server information"""
@@ -366,12 +362,9 @@ def get_cache_info() -> Dict[str, Any]:
             "uptime_seconds": info.get("uptime_in_seconds", 0),
             "connected_clients": info.get("connected_clients", 0),
             "used_memory_human": info.get("used_memory_human", "unknown"),
-            "used_memory_peak_human": info.get("used_memory_peak_human", "unknown")
+            "used_memory_peak_human": info.get("used_memory_peak_human", "unknown"),
         },
-        "keyspace": {
-            db: stats for db, stats in info.items()
-            if db.startswith("db")
-        }
+        "keyspace": {db: stats for db, stats in info.items() if db.startswith("db")},
     }
 
 
@@ -387,7 +380,7 @@ def get_cache_info() -> Dict[str, Any]:
 ## Related Tools
 • Use `get_cache_stats` to view current statistics""",
     title="Reset Cache Statistics",
-    annotations={"title": "Reset Cache Statistics"}
+    annotations={"title": "Reset Cache Statistics"},
 )
 def reset_cache_stats() -> Dict[str, Any]:
     """Reset cache statistics"""
@@ -396,10 +389,7 @@ def reset_cache_stats() -> Dict[str, Any]:
         return {"error": "Cache service not available"}
 
     cache.reset_stats()
-    return {
-        "status": "success",
-        "message": "Cache statistics reset"
-    }
+    return {"status": "success", "message": "Cache statistics reset"}
 
 
 # Initialize services on startup
@@ -421,8 +411,10 @@ if __name__ == "__main__":
     initialize_services()
 
     # Check configuration
-    if not os.getenv('HA_URL') or not os.getenv('HA_TOKEN'):
-        logger.warning("Home Assistant not configured. Set HA_URL and HA_TOKEN in .env.local or .env")
+    if not os.getenv("HA_URL") or not os.getenv("HA_TOKEN"):
+        logger.warning(
+            "Home Assistant not configured. Set HA_URL and HA_TOKEN in .env.local or .env"
+        )
 
     # Run the server using stdio transport
     mcp.run()

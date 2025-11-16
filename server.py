@@ -5,7 +5,6 @@ A specialized MCP server for Home Assistant device control and monitoring
 """
 
 import os
-import sys
 import logging
 from typing import Optional, Dict, Any
 from dotenv import dotenv_values
