@@ -29,14 +29,39 @@ logger = logging.getLogger(__name__)
 api_key = os.getenv("MCP_API_KEY")
 md5_salt = os.getenv("MD5_SALT", "")
 
+# Track initialization state for lazy loading
+_services_initialized = False
+
+
+def lazy_initialize_services():
+    """
+    Lazy initialization of services - called on first request instead of at startup.
+    This dramatically improves cold start time for scale-to-zero scenarios.
+    """
+    global _services_initialized
+
+    if _services_initialized:
+        return
+
+    logger.info("Lazy initializing services on first request...")
+
+    from .server import initialize_services
+
+    initialize_services()
+
+    _services_initialized = True
+    logger.info("Services initialized successfully")
+
+
 if api_key:
     # Use dual-factor path-based authentication if API key is set
     logger.info("MCP_API_KEY is set - using dual-factor path-based authentication")
 
     from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import Response
+    from starlette.middleware.base import BaseHTTPMiddleware
     import uvicorn
-    from .server import mcp, initialize_services
+    from .server import mcp
 
     # Get configuration
     port = int(os.getenv("PORT", "8080"))
@@ -69,19 +94,48 @@ if api_key:
         f"API key hash calculated: {api_key_hash[:8]}... (showing first 8 chars)"
     )
 
-    # Flag to track if services are initialized
-    _services_initialized = False
+    # Check configuration
+    if not os.getenv("HA_URL") or not os.getenv("HA_TOKEN"):
+        logger.warning(
+            "Home Assistant not configured - will initialize on first request"
+        )
 
-    def ensure_services_initialized():
-        """Initialize services on first request (lazy initialization)"""
-        global _services_initialized
-        if not _services_initialized:
-            logger.info("First request received - initializing services...")
-            initialize_services()
-            _services_initialized = True
-            logger.info("Services initialized successfully")
+    # DO NOT initialize services here - lazy init on first request
+    # This allows the container to start immediately
 
-    # Get the MCP HTTP app without a path since we'll mount it at /mcp
+    # Security middleware to add headers
+    class SecurityMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+
+            # Add security headers
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Cache-Control"] = (
+                "no-store, no-cache, must-revalidate, private"
+            )
+            response.headers["Content-Security-Policy"] = "default-src 'none'"
+
+            # Remove server identification headers if they exist
+            if "server" in response.headers:
+                del response.headers["server"]
+            if "x-powered-by" in response.headers:
+                del response.headers["x-powered-by"]
+
+            return response
+
+    # Middleware to lazy-initialize services on first real request
+    class LazyInitMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            # Skip lazy init for health check (keeps it fast)
+            if request.url.path != "/app/health":
+                lazy_initialize_services()
+
+            return await call_next(request)
+
+    # Get the MCP HTTP app without a path since we'll mount it
     mcp_app = mcp.http_app()
 
     # Create FastAPI app with security settings and MCP lifespan
@@ -93,78 +147,28 @@ if api_key:
         lifespan=mcp_app.lifespan,  # REQUIRED: Connect MCP app's lifespan
     )
 
-    # Security middleware to add headers (pure ASGI for streaming compatibility)
-    class SecurityMiddleware:
-        def __init__(self, app):
-            self.app = app
-
-        async def __call__(self, scope, receive, send):
-            if scope["type"] != "http":
-                await self.app(scope, receive, send)
-                return
-
-            async def send_with_headers(message):
-                if message["type"] == "http.response.start":
-                    headers = dict(message.get("headers", []))
-
-                    # Add security headers
-                    headers[b"x-content-type-options"] = b"nosniff"
-                    headers[b"x-frame-options"] = b"DENY"
-                    headers[b"x-xss-protection"] = b"1; mode=block"
-                    headers[b"referrer-policy"] = b"no-referrer"
-                    headers[b"cache-control"] = (
-                        b"no-store, no-cache, must-revalidate, private"
-                    )
-                    headers[b"content-security-policy"] = b"default-src 'none'"
-
-                    # Remove server identification headers if they exist
-                    headers.pop(b"server", None)
-                    headers.pop(b"x-powered-by", None)
-
-                    message["headers"] = list(headers.items())
-
-                await send(message)
-
-            await self.app(scope, receive, send_with_headers)
-
-    # Add security middleware
+    # Add middlewares (order matters - security first, then lazy init)
     app.add_middleware(SecurityMiddleware)
+    app.add_middleware(LazyInitMiddleware)
 
-    # Fast health check endpoint (no authentication, no service initialization)
+    # Ultra-lightweight health check endpoint - no service initialization
+    # This endpoint MUST be fast to pass health checks during cold starts
     @app.get("/app/health")
     async def health_check():
-        """Fast health check endpoint - does not initialize services"""
-        return {"status": "healthy", "version": "1.0.0", "server": "HomeAssistantMCP"}
+        """
+        Lightweight health check endpoint for container orchestrators.
+        Does NOT trigger service initialization to keep cold starts fast.
+        """
+        return {
+            "status": "healthy",
+            "initialized": _services_initialized,
+            "version": "1.0.0",
+            "server": "HomeAssistantMCP",
+        }
 
-    # Authenticated MCP endpoint with dual-factor path authentication
-    # Services are initialized on first authenticated request
-    @app.api_route(
-        f"/app/{api_key}/{api_key_hash}/mcp",
-        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-    )
-    @app.api_route(
-        f"/app/{api_key}/{api_key_hash}/mcp/{{path:path}}",
-        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
-    )
-    async def mcp_endpoint(request: Request, path: str = ""):
-        """MCP endpoint with lazy service initialization"""
-        # Initialize services on first request
-        ensure_services_initialized()
-
-        # Forward to MCP app
-        # Create a new request with the /mcp path
-        scope = request.scope.copy()
-        scope["path"] = f"/mcp/{path}" if path else "/mcp"
-        scope["root_path"] = ""
-
-        from starlette.requests import Request as StarletteRequest
-
-        modified_request = StarletteRequest(scope, request.receive)
-
-        # Call the MCP app
-        return await mcp_app(
-            modified_request.scope, modified_request.receive, request._send
-        )
+    # Mount the MCP app at /app/{api_key}/{api_key_hash}
+    # The MCP app has internal routes like /mcp, /sse, etc.
+    app.mount(f"/app/{api_key}/{api_key_hash}", mcp_app)
 
     # Add a custom 404 handler with anti-brute-force delay
     @app.exception_handler(404)
@@ -177,15 +181,11 @@ if api_key:
             )
             await asyncio.sleep(30)
 
-        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        # Return an empty 404 so any upstream (e.g. reverse proxy)
+        # can render its own 404 page.
+        return Response(status_code=404)
 
     if __name__ == "__main__":
-        # Check configuration
-        if not os.getenv("HA_URL") or not os.getenv("HA_TOKEN"):
-            logger.warning(
-                "Home Assistant not configured. Set HA_URL and HA_TOKEN in .env.local or .env"
-            )
-
         # Run HTTP server with authentication
         logger.info(
             "Starting Home Assistant MCP remote server with dual-factor authentication"
@@ -196,6 +196,7 @@ if api_key:
         logger.info(f"Health check: http://{host}:{port}/app/health")
         logger.warning("Keep your API key secret and use HTTPS in production!")
         logger.info("Use scripts/verify_auth.py to calculate the correct endpoint URL")
+        logger.info("Services will initialize lazily on first MCP request")
 
         # Use uvloop and httptools for performance if available
         uvicorn.run(
@@ -215,7 +216,9 @@ else:
     logger.warning("MCP_API_KEY not set - running in UNAUTHENTICATED mode")
     logger.warning("This is not recommended for production use!")
 
-    from .server import mcp, initialize_services
+    from .server import mcp
+
+    # DO NOT initialize services here - lazy init on first request
 
     if __name__ == "__main__":
         # Get configuration
@@ -229,17 +232,13 @@ else:
                 "Home Assistant not configured. Set HA_URL and HA_TOKEN in .env.local or .env"
             )
 
-        # Initialize services before starting the server
-        logger.info("Initializing services...")
-        initialize_services()
-        logger.info("Services initialized successfully")
-
-        # Run HTTP server without authentication
+        # For unauthenticated mode, let FastMCP handle everything
         logger.info("Starting Home Assistant MCP remote server (UNAUTHENTICATED)")
         logger.info(f"MCP endpoint: http://{host}:{port}/mcp")
         logger.info(
             "Note: Set MCP_API_KEY environment variable to enable authentication"
         )
+        logger.info("Services will initialize lazily on first MCP request")
 
         # Start the server with HTTP transport
         mcp.run(transport="http", host=host, port=port)
