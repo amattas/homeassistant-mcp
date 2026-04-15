@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="120" alt="Home Assistant MCP logo">
+</p>
+
 # Home Assistant MCP Server
 
 A specialized Model Context Protocol (MCP) server for Home Assistant device control and monitoring. This Docker-based server enables Claude Desktop and other MCP clients to interact with your Home Assistant instance for controlling smart home devices, monitoring sensors, and managing automations.
