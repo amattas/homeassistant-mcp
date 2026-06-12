@@ -251,8 +251,10 @@ class HomeAssistantService:
     def _detect_connection_type(self) -> ConnectionType:
         """Detect if this is a local or Nabu Casa connection"""
         parsed = urlparse(self.url)
-        if "ui.nabu.casa" in parsed.netloc or "remote.nabucasa.com" in parsed.netloc:
-            return ConnectionType.NABU_CASA
+        host = (parsed.hostname or "").lower()
+        for domain in ("ui.nabu.casa", "remote.nabucasa.com"):
+            if host == domain or host.endswith("." + domain):
+                return ConnectionType.NABU_CASA
         return ConnectionType.LOCAL
 
     def test_connection(self) -> Dict[str, Any]:
