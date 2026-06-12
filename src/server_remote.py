@@ -191,9 +191,13 @@ if api_key:
             "Starting Home Assistant MCP remote server with dual-factor authentication"
         )
         logger.info(
-            f"MCP endpoint: http://{host}:{port}/app/{api_key}/{api_key_hash}/mcp"
+            "MCP endpoint: http://%s:%s/app/%s/%s/mcp",
+            host,
+            port,
+            "[REDACTED]",
+            "[REDACTED]",
         )
-        logger.info(f"Health check: http://{host}:{port}/app/health")
+        logger.info("Health check: http://%s:%s/app/health", host, port)
         logger.warning("Keep your API key secret and use HTTPS in production!")
         logger.info("Use scripts/verify_auth.py to calculate the correct endpoint URL")
         logger.info("Services will initialize lazily on first MCP request")
