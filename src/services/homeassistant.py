@@ -1,10 +1,12 @@
 """Home Assistant service implementation for MCP integration via Nabu Casa or local connection"""
 
-import os
-import logging
 import json
+import logging
+import os
+
 import requests
-from .cache import cache_aside, CacheConfig, CacheTTL
+
+from .cache import CacheConfig, CacheTTL, cache_aside
 
 try:
     import websocket
@@ -14,16 +16,18 @@ except ImportError:
         from websocket import WebSocket as websocket
     except ImportError:
         websocket = None
-        logging.warning("websocket-client not available - WebSocket features disabled")
+        logging.getLogger(__name__).warning(
+            "websocket-client not available - WebSocket features disabled"
+        )
 import ssl
-from typing import Dict, List, Optional, Any, Union
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
+from typing import TYPE_CHECKING, Any, Optional
 from urllib.parse import urlparse
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
     from services.cache import RedisCache
 
 logger = logging.getLogger(__name__)
@@ -93,9 +97,9 @@ class HomeAssistantService:
             "Content-Type": "application/json",
         }
         self.timeout = 30  # seconds
-        self.areas_cache: Optional[List[Dict]] = None
-        self.devices_cache: Optional[List[Dict]] = None
-        self.entities_cache: Optional[Dict[str, Dict]] = None
+        self.areas_cache: list[dict] | None = None
+        self.devices_cache: list[dict] | None = None
+        self.entities_cache: dict[str, dict] | None = None
 
         logger.info(
             f"Initialized Home Assistant service ({self.connection_type.value}): {self.url}"
@@ -103,7 +107,7 @@ class HomeAssistantService:
 
     # ========== VALIDATION HELPERS ==========
 
-    def _validate_entity_id(self, entity_id: Union[str, List[str]]) -> None:
+    def _validate_entity_id(self, entity_id: str | list[str]) -> None:
         """Validate entity ID format and existence"""
         entity_ids = [entity_id] if isinstance(entity_id, str) else entity_id
 
@@ -149,20 +153,19 @@ class HomeAssistantService:
         """Validate service exists for domain"""
         try:
             services = self.get_services()
-            if domain in services:
-                if service not in services[domain]["services"]:
-                    available = list(services[domain]["services"].keys())
-                    raise ValueError(
-                        f"Invalid service '{service}' for domain '{domain}'.\n"
-                        f"Available services: {', '.join(available[:10])}\n"
-                        "To see all services:\n"
-                        f"  • Use `get_ha_services` to list services for {domain} domain"
-                    )
+            if domain in services and service not in services[domain]["services"]:
+                available = list(services[domain]["services"].keys())
+                raise ValueError(
+                    f"Invalid service '{service}' for domain '{domain}'.\n"
+                    f"Available services: {', '.join(available[:10])}\n"
+                    "To see all services:\n"
+                    f"  • Use `get_ha_services` to list services for {domain} domain"
+                )
         except Exception as e:
             # If we can't validate, log warning but don't block
             logger.warning(f"Could not validate service {domain}.{service}: {e}")
 
-    def _validate_brightness(self, brightness: Optional[int]) -> Optional[int]:
+    def _validate_brightness(self, brightness: int | None) -> int | None:
         """Validate brightness value and return as integer"""
         if brightness is not None:
             # Convert to int if string
@@ -189,9 +192,7 @@ class HomeAssistantService:
             return brightness_int
         return None
 
-    def _validate_temperature(
-        self, temperature: Optional[float], unit: str = "C"
-    ) -> None:
+    def _validate_temperature(self, temperature: float | None, unit: str = "C") -> None:
         """Validate temperature value"""
         if temperature is not None:
             if unit == "C":
@@ -204,18 +205,17 @@ class HomeAssistantService:
                         "  • 16-18°C = Sleeping temperature\n"
                         "  • 23-26°C = Warm setting"
                     )
-            elif unit == "F":
-                if temperature < -58 or temperature > 122:
-                    raise ValueError(
-                        f"Invalid temperature: {temperature}°F.\n"
-                        "Temperature should be between -58°F and 122°F for most climates.\n"
-                        "Common settings:\n"
-                        "  • 68-72°F = Comfortable room temperature\n"
-                        "  • 60-65°F = Sleeping temperature\n"
-                        "  • 73-79°F = Warm setting"
-                    )
+            elif unit == "F" and (temperature < -58 or temperature > 122):
+                raise ValueError(
+                    f"Invalid temperature: {temperature}°F.\n"
+                    "Temperature should be between -58°F and 122°F for most climates.\n"
+                    "Common settings:\n"
+                    "  • 68-72°F = Comfortable room temperature\n"
+                    "  • 60-65°F = Sleeping temperature\n"
+                    "  • 73-79°F = Warm setting"
+                )
 
-    def _validate_hvac_mode(self, hvac_mode: Optional[str]) -> None:
+    def _validate_hvac_mode(self, hvac_mode: str | None) -> None:
         """Validate HVAC mode"""
         valid_modes = ["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]
         if hvac_mode is not None and hvac_mode not in valid_modes:
@@ -257,7 +257,7 @@ class HomeAssistantService:
                 return ConnectionType.NABU_CASA
         return ConnectionType.LOCAL
 
-    def test_connection(self) -> Dict[str, Any]:
+    def test_connection(self) -> dict[str, Any]:
         """Test connection to Home Assistant"""
         try:
             response = requests.get(
@@ -289,7 +289,7 @@ class HomeAssistantService:
                 "url": self.url,
             }
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get Home Assistant configuration"""
         response = requests.get(
             f"{self.url}/api/config",
@@ -302,12 +302,12 @@ class HomeAssistantService:
 
     def get_states(
         self,
-        entity_ids: Optional[List[str]] = None,
-        domain: Optional[str] = None,
-        area: Optional[str] = None,
-        limit: Optional[int] = None,
+        entity_ids: list[str] | None = None,
+        domain: str | None = None,
+        area: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get states of entities with optional filtering and pagination
 
@@ -333,7 +333,7 @@ class HomeAssistantService:
         except Exception as e:
             logger.error(f"Failed to get states: {e}")
             raise ValueError(
-                f"Failed to retrieve Home Assistant states: {str(e)}\n"
+                f"Failed to retrieve Home Assistant states: {e!s}\n"
                 "To reduce response size:\n"
                 "  • Use domain parameter to filter by type (e.g., 'light', 'switch')\n"
                 "  • Use area parameter to filter by room/area\n"
@@ -402,9 +402,9 @@ class HomeAssistantService:
         self,
         domain: str,
         service: str,
-        entity_id: Optional[Union[str, List[str]]] = None,
+        entity_id: str | list[str] | None = None,
         **service_data,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Call a Home Assistant service
 
@@ -490,21 +490,21 @@ class HomeAssistantService:
                 "  • Verify HA_URL environment variable\n"
                 "  • Check Home Assistant is running\n"
                 "  • Try using local URL if using Nabu Casa\n"
-                f"Original error: {str(e)}"
+                f"Original error: {e!s}"
             )
         except ValueError:
             # Re-raise validation errors
             raise
         except Exception as e:
             raise ValueError(
-                f"Unexpected error calling {domain}.{service}: {str(e)}\n"
+                f"Unexpected error calling {domain}.{service}: {e!s}\n"
                 "For help:\n"
                 "  • Use `get_ha_services` to verify the service exists\n"
                 "  • Use `get_ha_connection_status` to test connectivity\n"
                 "  • Check Home Assistant logs for more details"
             )
 
-    def turn_on(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def turn_on(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Turn on an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -520,7 +520,7 @@ class HomeAssistantService:
         )
         return self.call_service(domain, "turn_on", entity_id=entity_id, **kwargs)
 
-    def turn_off(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def turn_off(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Turn off an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -532,7 +532,7 @@ class HomeAssistantService:
         )
         return self.call_service(domain, "turn_off", entity_id=entity_id, **kwargs)
 
-    def toggle(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def toggle(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Toggle an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -544,7 +544,7 @@ class HomeAssistantService:
         )
         return self.call_service(domain, "toggle", entity_id=entity_id, **kwargs)
 
-    def set_value(self, entity_id: str, value: Any) -> Dict[str, Any]:
+    def set_value(self, entity_id: str, value: Any) -> dict[str, Any]:
         """Set value for an input entity"""
         domain = entity_id.split(".")[0]
 
@@ -578,27 +578,27 @@ class HomeAssistantService:
                 "error": f"Unsupported domain for set_value: {domain}",
             }
 
-    def activate_scene(self, scene_id: str) -> Dict[str, Any]:
+    def activate_scene(self, scene_id: str) -> dict[str, Any]:
         """Activate a scene"""
         return self.call_service("scene", "turn_on", entity_id=scene_id)
 
-    def run_script(self, script_id: str, **variables) -> Dict[str, Any]:
+    def run_script(self, script_id: str, **variables) -> dict[str, Any]:
         """Run a script with optional variables"""
         return self.call_service(
             "script", "turn_on", entity_id=script_id, variables=variables
         )
 
-    def trigger_automation(self, automation_id: str) -> Dict[str, Any]:
+    def trigger_automation(self, automation_id: str) -> dict[str, Any]:
         """Manually trigger an automation"""
         return self.call_service("automation", "trigger", entity_id=automation_id)
 
     def send_notification(
         self,
         message: str,
-        title: Optional[str] = None,
+        title: str | None = None,
         service_name: str = "notify",
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send a notification"""
         data = {"message": message}
         if title:
@@ -606,7 +606,7 @@ class HomeAssistantService:
         data.update(kwargs)
         return self.call_service("notify", service_name, **data)
 
-    def get_areas(self, minimal: bool = True) -> List[Dict[str, Any]]:
+    def get_areas(self, minimal: bool = True) -> list[dict[str, Any]]:
         """Get all areas/rooms via WebSocket API
 
         Args:
@@ -698,7 +698,7 @@ class HomeAssistantService:
                 return self.areas_cache
             return []
 
-    def _get_areas_via_websocket(self) -> Optional[List[Dict[str, Any]]]:
+    def _get_areas_via_websocket(self) -> list[dict[str, Any]] | None:
         """Get areas via WebSocket API when REST is not available"""
         if websocket is None:
             logger.warning(
@@ -768,8 +768,8 @@ class HomeAssistantService:
             return None
 
     def get_devices(
-        self, minimal: bool = True, limit: Optional[int] = None, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+        self, minimal: bool = True, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Get all devices from states
 
         Args:
@@ -895,8 +895,8 @@ class HomeAssistantService:
                 raise
 
     def get_entities(
-        self, minimal: bool = True, limit: Optional[int] = None, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+        self, minimal: bool = True, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Get all entities metadata (without current states)
 
         Args:
@@ -979,7 +979,7 @@ class HomeAssistantService:
 
         return entities
 
-    def get_services(self) -> Dict[str, Any]:
+    def get_services(self) -> dict[str, Any]:
         """Get all available services"""
         response = requests.get(
             f"{self.url}/api/services",
@@ -993,11 +993,11 @@ class HomeAssistantService:
     def get_history(
         self,
         entity_id: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get history for an entity
 
@@ -1012,9 +1012,9 @@ class HomeAssistantService:
             List of historical states
         """
         if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=1)
+            start_time = datetime.now(UTC) - timedelta(days=1)
         if not end_time:
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now(UTC)
 
         params = {
             "filter_entity_id": entity_id,
@@ -1050,10 +1050,10 @@ class HomeAssistantService:
 
     def get_logbook(
         self,
-        entity_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        entity_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get logbook entries
 
@@ -1066,9 +1066,9 @@ class HomeAssistantService:
             List of logbook entries
         """
         if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=1)
+            start_time = datetime.now(UTC) - timedelta(days=1)
         if not end_time:
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now(UTC)
 
         params = {}
         if entity_id:
@@ -1089,8 +1089,8 @@ class HomeAssistantService:
         return response.json()
 
     def fire_event(
-        self, event_type: str, event_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, event_type: str, event_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Fire a custom event
 
@@ -1119,8 +1119,8 @@ class HomeAssistantService:
             }
 
     def set_state(
-        self, entity_id: str, state: str, attributes: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, entity_id: str, state: str, attributes: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Set state of an entity (use with caution)
 
@@ -1152,8 +1152,8 @@ class HomeAssistantClient:
 
     def __init__(
         self,
-        url: Optional[str] = None,
-        access_token: Optional[str] = None,
+        url: str | None = None,
+        access_token: str | None = None,
         verify_ssl: bool = True,
         mcp: Optional["FastMCP"] = None,
         cache: Optional["RedisCache"] = None,
@@ -1182,23 +1182,23 @@ class HomeAssistantClient:
         if self.mcp:
             self._register_mcp_tools()
 
-    def test_connection(self) -> Dict[str, Any]:
+    def test_connection(self) -> dict[str, Any]:
         """Test connection to Home Assistant"""
         return self.service.test_connection()
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get Home Assistant configuration"""
         return self.service.get_config()
 
     @cache_aside(CacheConfig(ttl=CacheTTL.HA_STATES, key_prefix="ha:states"))
     def get_states(
         self,
-        entity_ids: Optional[List[str]] = None,
-        domain: Optional[str] = None,
-        area: Optional[str] = None,
-        limit: Optional[int] = None,
+        entity_ids: list[str] | None = None,
+        domain: str | None = None,
+        area: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get entity states with optional pagination"""
         try:
             states = self.service.get_states(entity_ids, domain, area, limit, offset)
@@ -1210,105 +1210,105 @@ class HomeAssistantClient:
         self,
         domain: str,
         service: str,
-        entity_id: Optional[Union[str, List[str]]] = None,
+        entity_id: str | list[str] | None = None,
         **service_data,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Call Home Assistant service"""
         return self.service.call_service(domain, service, entity_id, **service_data)
 
-    def turn_on(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def turn_on(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Turn on an entity"""
         return self.service.turn_on(entity_id, **kwargs)
 
-    def turn_off(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def turn_off(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Turn off an entity"""
         return self.service.turn_off(entity_id, **kwargs)
 
-    def toggle(self, entity_id: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
+    def toggle(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
         """Toggle an entity"""
         return self.service.toggle(entity_id, **kwargs)
 
-    def set_value(self, entity_id: str, value: Any) -> Dict[str, Any]:
+    def set_value(self, entity_id: str, value: Any) -> dict[str, Any]:
         """Set value for an input entity"""
         return self.service.set_value(entity_id, value)
 
-    def activate_scene(self, scene_id: str) -> Dict[str, Any]:
+    def activate_scene(self, scene_id: str) -> dict[str, Any]:
         """Activate a scene"""
         return self.service.activate_scene(scene_id)
 
-    def run_script(self, script_id: str, **variables) -> Dict[str, Any]:
+    def run_script(self, script_id: str, **variables) -> dict[str, Any]:
         """Run a script"""
         return self.service.run_script(script_id, **variables)
 
-    def trigger_automation(self, automation_id: str) -> Dict[str, Any]:
+    def trigger_automation(self, automation_id: str) -> dict[str, Any]:
         """Trigger an automation"""
         return self.service.trigger_automation(automation_id)
 
     def send_notification(
         self,
         message: str,
-        title: Optional[str] = None,
+        title: str | None = None,
         service_name: str = "notify",
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Send a notification"""
         return self.service.send_notification(message, title, service_name, **kwargs)
 
     @cache_aside(CacheConfig(ttl=CacheTTL.HA_AREAS, key_prefix="ha:areas"))
-    def get_areas(self) -> List[Dict[str, Any]]:
+    def get_areas(self) -> list[dict[str, Any]]:
         """Get all areas"""
         return self.service.get_areas()
 
     @cache_aside(CacheConfig(ttl=CacheTTL.HA_DEVICE_LIST, key_prefix="ha:device_list"))
     def get_devices(
-        self, minimal: bool = True, limit: Optional[int] = None, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+        self, minimal: bool = True, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Get list of all devices (metadata only, not current states)"""
         # This returns device metadata, not their current states
         return self.service.get_devices(minimal, limit, offset)
 
     @cache_aside(CacheConfig(ttl=CacheTTL.HA_ENTITY_LIST, key_prefix="ha:entity_list"))
     def get_entities(
-        self, minimal: bool = True, limit: Optional[int] = None, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+        self, minimal: bool = True, limit: int | None = None, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Get list of all entities (metadata only, current states use get_states)"""
         # This returns entity metadata, not their current states
         return self.service.get_entities(minimal, limit, offset)
 
     @cache_aside(CacheConfig(ttl=CacheTTL.HA_SERVICES, key_prefix="ha:services"))
-    def get_services(self) -> Dict[str, Any]:
+    def get_services(self) -> dict[str, Any]:
         """Get all services"""
         return self.service.get_services()
 
     def get_history(
         self,
         entity_id: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: Optional[int] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get entity history with optional pagination"""
         return self.service.get_history(entity_id, start_time, end_time, limit, offset)
 
     def get_logbook(
         self,
-        entity_id: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        entity_id: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """Get logbook entries"""
         return self.service.get_logbook(entity_id, start_time, end_time)
 
     def fire_event(
-        self, event_type: str, event_data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, event_type: str, event_data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Fire an event"""
         return self.service.fire_event(event_type, event_data)
 
     def set_state(
-        self, entity_id: str, state: str, attributes: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, entity_id: str, state: str, attributes: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Set entity state"""
         return self.service.set_state(entity_id, state, attributes)
 
@@ -2344,7 +2344,7 @@ All sensors of the specified type with current values
         )(self.get_indoor_temp_sensors_for_mcp)
 
     # MCP Tool Wrappers
-    def turn_on_for_mcp(self, entity_id: str) -> Dict[str, Any]:
+    def turn_on_for_mcp(self, entity_id: str) -> dict[str, Any]:
         """MCP wrapper for turn_on - simple on to default/full state"""
         try:
             # Simple turn on - device will use its default "on" state
@@ -2358,7 +2358,7 @@ All sensors of the specified type with current values
                 "help": "Check entity_id is valid using get_ha_entities or get_ha_states",
             }
 
-    def turn_off_for_mcp(self, entity_id: str) -> Dict[str, Any]:
+    def turn_off_for_mcp(self, entity_id: str) -> dict[str, Any]:
         """MCP wrapper for turn_off - simple off"""
         try:
             # Simple turn off - device will turn completely off
@@ -2371,13 +2371,13 @@ All sensors of the specified type with current values
                 "help": "Check entity_id is valid using get_ha_entities or get_ha_states",
             }
 
-    def toggle_for_mcp(self, entity_id: str) -> Dict[str, Any]:
+    def toggle_for_mcp(self, entity_id: str) -> dict[str, Any]:
         """MCP wrapper for toggle"""
         return self.toggle(entity_id)
 
     def set_light_level_for_mcp(
         self, entity_id: str, brightness_percent: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """MCP wrapper for setting light brightness level with percentage input"""
         try:
             # Convert percentage string to 0-255 brightness value
@@ -2419,10 +2419,10 @@ All sensors of the specified type with current values
     def set_climate_for_mcp(
         self,
         entity_id: str,
-        temperature: Optional[Union[float, str]] = None,
-        hvac_mode: Optional[str] = None,
-        preset_mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        temperature: float | str | None = None,
+        hvac_mode: str | None = None,
+        preset_mode: str | None = None,
+    ) -> dict[str, Any]:
         """MCP wrapper for climate control with type conversion"""
         try:
             # Convert temperature string to float if needed
@@ -2463,8 +2463,8 @@ All sensors of the specified type with current values
             return {"error": str(e), "entity_id": entity_id}
 
     def control_cover_for_mcp(
-        self, entity_id: str, action: str, position: Optional[Union[int, str]] = None
-    ) -> Dict[str, Any]:
+        self, entity_id: str, action: str, position: int | str | None = None
+    ) -> dict[str, Any]:
         """MCP wrapper for cover control with type conversion"""
         try:
             # Convert position string to int if needed
@@ -2500,8 +2500,8 @@ All sensors of the specified type with current values
             return {"error": str(e), "entity_id": entity_id}
 
     def lock_control_for_mcp(
-        self, entity_id: str, action: str, code: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, entity_id: str, action: str, code: str | None = None
+    ) -> dict[str, Any]:
         """MCP wrapper for lock control"""
         if action == "lock":
             return self.call_service("lock", "lock", entity_id)
@@ -2514,14 +2514,14 @@ All sensors of the specified type with current values
             return {"error": f"Invalid action '{action}'. Use 'lock' or 'unlock'"}
 
     def run_script_for_mcp(
-        self, script_id: str, variables: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, script_id: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """MCP wrapper for run_script"""
         return self.run_script(script_id, **(variables or {}))
 
     def control_media_for_mcp(
-        self, entity_id: str, action: str, volume: Optional[Union[float, str]] = None
-    ) -> Dict[str, Any]:
+        self, entity_id: str, action: str, volume: float | str | None = None
+    ) -> dict[str, Any]:
         """MCP wrapper for media control with type conversion"""
         try:
             # Convert volume string to float if needed
@@ -2575,11 +2575,11 @@ All sensors of the specified type with current values
         area_name: str,
         action: str,
         domain: str = "light",
-        brightness: Optional[int] = None,
-        color_temp: Optional[int] = None,
-        rgb_color: Optional[List[int]] = None,
-        transition: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        brightness: int | None = None,
+        color_temp: int | None = None,
+        rgb_color: list[int] | None = None,
+        transition: int | None = None,
+    ) -> dict[str, Any]:
         """MCP wrapper for area control"""
         # Get entities in area
         states = self.get_states(
@@ -2624,13 +2624,13 @@ All sensors of the specified type with current values
         }
 
     def send_notification_for_mcp(
-        self, message: str, title: Optional[str] = None, target: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, message: str, title: str | None = None, target: str | None = None
+    ) -> dict[str, Any]:
         """MCP wrapper for send_notification"""
         service_name = target or "notify"
         return self.send_notification(message, title, service_name)
 
-    def get_areas_for_mcp(self) -> Dict[str, Any]:
+    def get_areas_for_mcp(self) -> dict[str, Any]:
         """MCP wrapper for get_areas"""
         areas = self.get_areas()
         return {"areas": areas, "count": len(areas)}
@@ -2639,9 +2639,9 @@ All sensors of the specified type with current values
         self,
         domain: str,
         service: str,
-        entity_id: Optional[str] = None,
-        service_data: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        entity_id: str | None = None,
+        service_data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """MCP wrapper for call_service that accepts a dict instead of **kwargs"""
         if service_data:
             return self.call_service(domain, service, entity_id, **service_data)
@@ -2650,26 +2650,26 @@ All sensors of the specified type with current values
 
     # Tool wrapper methods for parameterized queries
     def get_states_by_domain_for_mcp(
-        self, domain: str, area: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, domain: str, area: str | None = None
+    ) -> dict[str, Any]:
         """Get states filtered by domain and optionally by area"""
         return self.get_states(domain=domain, area=area)
 
     def get_states_by_area_for_mcp(
-        self, area: str, domain: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, area: str, domain: str | None = None
+    ) -> dict[str, Any]:
         """Get states filtered by area and optionally by domain"""
         return self.get_states(area=area, domain=domain)
 
     # MCP Tool Wrapper Methods for Pagination
     def get_states_paginated_for_mcp(
         self,
-        limit: Optional[Union[int, str]] = None,
-        offset: Optional[Union[int, str]] = None,
-        entity_ids: Optional[List[str]] = None,
-        domain: Optional[str] = None,
-        area: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        limit: int | str | None = None,
+        offset: int | str | None = None,
+        entity_ids: list[str] | None = None,
+        domain: str | None = None,
+        area: str | None = None,
+    ) -> dict[str, Any]:
         """MCP wrapper for paginated get_states with type conversion"""
         try:
             # Convert string parameters to integers if needed
@@ -2701,10 +2701,10 @@ All sensors of the specified type with current values
 
     def get_devices_paginated_for_mcp(
         self,
-        minimal: Optional[Union[bool, str]] = None,
-        limit: Optional[Union[int, str]] = None,
-        offset: Optional[Union[int, str]] = None,
-    ) -> List[Dict[str, Any]]:
+        minimal: bool | str | None = None,
+        limit: int | str | None = None,
+        offset: int | str | None = None,
+    ) -> list[dict[str, Any]]:
         """MCP wrapper for paginated get_devices with type conversion"""
         try:
             # Convert string parameters to appropriate types
@@ -2733,10 +2733,10 @@ All sensors of the specified type with current values
 
     def get_entities_paginated_for_mcp(
         self,
-        minimal: Optional[Union[bool, str]] = None,
-        limit: Optional[Union[int, str]] = None,
-        offset: Optional[Union[int, str]] = None,
-    ) -> List[Dict[str, Any]]:
+        minimal: bool | str | None = None,
+        limit: int | str | None = None,
+        offset: int | str | None = None,
+    ) -> list[dict[str, Any]]:
         """MCP wrapper for paginated get_entities with type conversion"""
         try:
             # Convert string parameters to appropriate types
@@ -2764,7 +2764,7 @@ All sensors of the specified type with current values
             return []
 
     # Resource Methods
-    def get_all_states_resource(self) -> Dict[str, Any]:
+    def get_all_states_resource(self) -> dict[str, Any]:
         """Resource providing all entity states"""
         result = self.get_states()
         states = result.get("states", [])
@@ -2774,23 +2774,23 @@ All sensors of the specified type with current values
             "by_domain": self._group_by_domain(states),
         }
 
-    def get_areas_resource(self) -> List[Dict[str, Any]]:
+    def get_areas_resource(self) -> list[dict[str, Any]]:
         """Resource providing all areas"""
         return self.get_areas()
 
-    def get_devices_resource(self) -> List[Dict[str, Any]]:
+    def get_devices_resource(self) -> list[dict[str, Any]]:
         """Resource providing all devices"""
         return self.get_devices()
 
-    def get_entities_resource(self) -> List[Dict[str, Any]]:
+    def get_entities_resource(self) -> list[dict[str, Any]]:
         """Resource providing all entities"""
         return self.get_entities()
 
-    def get_services_resource(self) -> Dict[str, Any]:
+    def get_services_resource(self) -> dict[str, Any]:
         """Resource providing all available services"""
         return self.get_services()
 
-    def get_entity_state_resource(self, entity_id: str) -> Dict[str, Any]:
+    def get_entity_state_resource(self, entity_id: str) -> dict[str, Any]:
         """Resource providing detailed state for a single entity"""
         try:
             result = self.get_states(entity_id=entity_id)
@@ -2804,8 +2804,8 @@ All sensors of the specified type with current values
             return {"error": str(e), "entity_id": entity_id}
 
     def get_entity_history_resource(
-        self, entity_id: str, hours: Union[int, str] = 24
-    ) -> Dict[str, Any]:
+        self, entity_id: str, hours: int | str = 24
+    ) -> dict[str, Any]:
         """Resource providing history for a specific entity with type conversion"""
         try:
             # Convert hours string to int if needed
@@ -2818,9 +2818,9 @@ All sensors of the specified type with current values
                     hours = 24  # Default to 24 hours if can't convert
 
             # Get history for the specified period
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timedelta
 
-            end_time = datetime.now(timezone.utc)
+            end_time = datetime.now(UTC)
             start_time = end_time - timedelta(hours=hours)
 
             history = self.get_history(entity_id, start_time, end_time)
@@ -2836,7 +2836,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting history for entity {entity_id}: {e}")
             return {"error": str(e), "entity_id": entity_id}
 
-    def get_scenes_resource(self) -> Dict[str, Any]:
+    def get_scenes_resource(self) -> dict[str, Any]:
         """Resource providing all available scenes"""
         try:
             result = self.get_states(domain="scene")
@@ -2846,7 +2846,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting scenes: {e}")
             return {"error": str(e)}
 
-    def get_automations_resource(self) -> Dict[str, Any]:
+    def get_automations_resource(self) -> dict[str, Any]:
         """Resource providing all automations"""
         try:
             result = self.get_states(domain="automation")
@@ -2860,7 +2860,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting automations: {e}")
             return {"error": str(e)}
 
-    def get_scripts_resource(self) -> Dict[str, Any]:
+    def get_scripts_resource(self) -> dict[str, Any]:
         """Resource providing all scripts"""
         try:
             result = self.get_states(domain="script")
@@ -2870,7 +2870,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting scripts: {e}")
             return {"error": str(e)}
 
-    def get_sensors_by_type_resource(self, sensor_type: str) -> Dict[str, Any]:
+    def get_sensors_by_type_resource(self, sensor_type: str) -> dict[str, Any]:
         """Resource providing sensors of a specific type"""
         try:
             result = self.get_states(domain="sensor")
@@ -2899,7 +2899,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting sensors of type {sensor_type}: {e}")
             return {"error": str(e), "sensor_type": sensor_type}
 
-    def get_unavailable_entities_resource(self) -> Dict[str, Any]:
+    def get_unavailable_entities_resource(self) -> dict[str, Any]:
         """Resource providing unavailable entities"""
         try:
             result = self.get_states()
@@ -2917,7 +2917,7 @@ All sensors of the specified type with current values
             logger.error(f"Error getting unavailable entities: {e}")
             return {"error": str(e)}
 
-    def categorize_sensors(self) -> Dict[str, Any]:
+    def categorize_sensors(self) -> dict[str, Any]:
         """Categorize all sensors by type (weather, pool, air quality, HVAC, etc.)"""
         try:
             from helpers.sensor_categorizer import SensorCategorizer
@@ -2947,7 +2947,7 @@ All sensors of the specified type with current values
             logger.error(f"Error categorizing sensors: {e}")
             return {"error": str(e)}
 
-    def get_sensors_by_category(self, category: str) -> Dict[str, Any]:
+    def get_sensors_by_category(self, category: str) -> dict[str, Any]:
         """Get sensors for a specific category"""
         try:
             from helpers.sensor_categorizer import SensorCategorizer, SensorCategory
@@ -2977,31 +2977,31 @@ All sensors of the specified type with current values
             logger.error(f"Error getting sensors by category: {e}")
             return {"error": str(e)}
 
-    def categorize_sensors_for_mcp(self) -> Dict[str, Any]:
+    def categorize_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP wrapper for categorize_sensors"""
         return self.categorize_sensors()
 
-    def get_weather_sensors_for_mcp(self) -> Dict[str, Any]:
+    def get_weather_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP tool to get all weather-related sensors"""
         return self.get_sensors_by_category("weather")
 
-    def get_pool_sensors_for_mcp(self) -> Dict[str, Any]:
+    def get_pool_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP tool to get all pool-related sensors"""
         return self.get_sensors_by_category("pool")
 
-    def get_air_quality_sensors_for_mcp(self) -> Dict[str, Any]:
+    def get_air_quality_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP tool to get all indoor air quality sensors"""
         return self.get_sensors_by_category("indoor_air_quality")
 
-    def get_hvac_sensors_for_mcp(self) -> Dict[str, Any]:
+    def get_hvac_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP tool to get all HVAC-related sensors"""
         return self.get_sensors_by_category("hvac")
 
-    def get_indoor_temp_sensors_for_mcp(self) -> Dict[str, Any]:
+    def get_indoor_temp_sensors_for_mcp(self) -> dict[str, Any]:
         """MCP tool to get all indoor temperature sensors (non-HVAC)"""
         return self.get_sensors_by_category("indoor_temperature")
 
-    def get_domains_resource(self) -> Dict[str, Any]:
+    def get_domains_resource(self) -> dict[str, Any]:
         """Resource providing available Home Assistant domains"""
         return {
             "domains": [
@@ -3109,7 +3109,7 @@ All sensors of the specified type with current values
             "usage": "Use domain name in ha://states/domain/{domain} or when filtering entities",
         }
 
-    def get_device_classes_resource(self) -> Dict[str, Any]:
+    def get_device_classes_resource(self) -> dict[str, Any]:
         """Resource providing device classes for different entity types"""
         return {
             "sensor_classes": [
@@ -3163,7 +3163,7 @@ All sensors of the specified type with current values
             "usage": "Device classes help identify entity types and expected behaviors",
         }
 
-    def get_service_names_resource(self) -> Dict[str, Any]:
+    def get_service_names_resource(self) -> dict[str, Any]:
         """Resource providing common service names for each domain"""
         return {
             "services_by_domain": {
@@ -3233,7 +3233,7 @@ All sensors of the specified type with current values
             "usage": "Use with ha_call_service tool: domain + service name (e.g., 'light.turn_on')",
         }
 
-    def get_lights_on_resource(self) -> Dict[str, Any]:
+    def get_lights_on_resource(self) -> dict[str, Any]:
         """Get all lights that are currently on"""
         result = self.get_states(domain="light")
         lights = result.get("states", [])
@@ -3246,7 +3246,7 @@ All sensors of the specified type with current values
             "by_area": self._group_by_area(lights_on),
         }
 
-    def get_devices_on_resource(self) -> Dict[str, Any]:
+    def get_devices_on_resource(self) -> dict[str, Any]:
         """Get all devices that are currently on"""
         result = self.get_states()
         all_states = result.get("states", [])
@@ -3262,16 +3262,15 @@ All sensors of the specified type with current values
                 "media_player",
                 "climate",
                 "vacuum",
+            ] and entity.get("state") in [
+                "on",
+                "playing",
+                "heat",
+                "cool",
+                "heat_cool",
+                "cleaning",
             ]:
-                if entity.get("state") in [
-                    "on",
-                    "playing",
-                    "heat",
-                    "cool",
-                    "heat_cool",
-                    "cleaning",
-                ]:
-                    devices_on.append(entity)
+                devices_on.append(entity)
 
         return {
             "devices_on": devices_on,
@@ -3280,7 +3279,7 @@ All sensors of the specified type with current values
             "by_area": self._group_by_area(devices_on),
         }
 
-    def get_temperature_sensors_resource(self) -> Dict[str, Any]:
+    def get_temperature_sensors_resource(self) -> dict[str, Any]:
         """Get all temperature sensors with readings"""
         result = self.get_states(domain="sensor")
         sensors = result.get("states", [])
@@ -3308,7 +3307,7 @@ All sensors of the specified type with current values
             "by_area": self._group_by_area(temp_sensors),
         }
 
-    def get_motion_sensors_resource(self) -> Dict[str, Any]:
+    def get_motion_sensors_resource(self) -> dict[str, Any]:
         """Get all motion sensors and their state"""
         result = self.get_states(domain="binary_sensor")
         sensors = result.get("states", [])
@@ -3337,7 +3336,7 @@ All sensors of the specified type with current values
             "by_area": self._group_by_area(motion_sensors),
         }
 
-    def get_door_window_sensors_resource(self) -> Dict[str, Any]:
+    def get_door_window_sensors_resource(self) -> dict[str, Any]:
         """Get all door and window sensors"""
         result = self.get_states(domain="binary_sensor")
         sensors = result.get("states", [])
@@ -3373,7 +3372,7 @@ All sensors of the specified type with current values
             },
         }
 
-    def get_security_status_resource(self) -> Dict[str, Any]:
+    def get_security_status_resource(self) -> dict[str, Any]:
         """Get security-related information"""
         result = self.get_states()
         all_states = result.get("states", [])
@@ -3467,7 +3466,7 @@ All sensors of the specified type with current values
             },
         }
 
-    def get_climate_status_resource(self) -> Dict[str, Any]:
+    def get_climate_status_resource(self) -> dict[str, Any]:
         """Get climate control status"""
         result = self.get_states()
         all_states = result.get("states", [])
@@ -3529,7 +3528,7 @@ All sensors of the specified type with current values
 
         return climate_info
 
-    def get_battery_status_resource(self) -> Dict[str, Any]:
+    def get_battery_status_resource(self) -> dict[str, Any]:
         """Get battery levels for all devices"""
         result = self.get_states()
         all_states = result.get("states", [])
@@ -3584,7 +3583,7 @@ All sensors of the specified type with current values
         }
 
     # Helper methods for grouping
-    def _group_by_domain(self, entities: List[Dict]) -> Dict[str, List[Dict]]:
+    def _group_by_domain(self, entities: list[dict]) -> dict[str, list[dict]]:
         """Group entities by domain"""
         grouped = {}
         for entity in entities:
@@ -3595,7 +3594,7 @@ All sensors of the specified type with current values
             grouped[domain].append(entity)
         return grouped
 
-    def _group_by_area(self, entities: List[Dict]) -> Dict[str, List[Dict]]:
+    def _group_by_area(self, entities: list[dict]) -> dict[str, list[dict]]:
         """Group entities by area"""
         grouped = {}
         for entity in entities:
@@ -3605,7 +3604,7 @@ All sensors of the specified type with current values
             grouped[area].append(entity)
         return grouped
 
-    def _get_entity_area(self, entity_id: str) -> Optional[str]:
+    def _get_entity_area(self, entity_id: str) -> str | None:
         """Get the area for an entity"""
         try:
             entities = self.get_entities()

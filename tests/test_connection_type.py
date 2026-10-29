@@ -9,7 +9,7 @@ pytest.importorskip("redis")
 from src.services.homeassistant import (
     ConnectionType,
     HomeAssistantService,
-)  # noqa: E402
+)
 
 
 def _service(url: str) -> HomeAssistantService:
