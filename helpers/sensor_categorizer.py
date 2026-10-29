@@ -5,8 +5,8 @@ Separates weather, pool, indoor air quality, and HVAC sensors
 """
 
 import re
-from typing import Dict, List, Any
 from enum import Enum
+from typing import Any, ClassVar
 
 
 class SensorCategory(Enum):
@@ -27,7 +27,7 @@ class SensorCategorizer:
     """Categorize Home Assistant sensors by type and location"""
 
     # Weather-related keywords and patterns
-    WEATHER_PATTERNS = [
+    WEATHER_PATTERNS: ClassVar[list[str]] = [
         r"weather[_.]",
         r"forecast",
         r"precipitation",
@@ -56,7 +56,7 @@ class SensorCategorizer:
     ]
 
     # Pool-related keywords and patterns
-    POOL_PATTERNS = [
+    POOL_PATTERNS: ClassVar[list[str]] = [
         r"pool",
         r"spa",
         r"hot[_.]?tub",
@@ -75,7 +75,7 @@ class SensorCategorizer:
     ]
 
     # Indoor air quality keywords and patterns
-    AIR_QUALITY_PATTERNS = [
+    AIR_QUALITY_PATTERNS: ClassVar[list[str]] = [
         r"air[_.]?quality",
         r"aqi",
         r"co2",
@@ -100,7 +100,7 @@ class SensorCategorizer:
     ]
 
     # HVAC-related keywords and patterns
-    HVAC_PATTERNS = [
+    HVAC_PATTERNS: ClassVar[list[str]] = [
         r"thermostat",
         r"hvac",
         r"furnace",
@@ -125,7 +125,7 @@ class SensorCategorizer:
     ]
 
     # Indoor temperature patterns (non-HVAC)
-    INDOOR_TEMP_PATTERNS = [
+    INDOOR_TEMP_PATTERNS: ClassVar[list[str]] = [
         r"bedroom.*temp",
         r"bathroom.*temp",
         r"kitchen.*temp",
@@ -166,7 +166,7 @@ class SensorCategorizer:
             re.compile(p, re.IGNORECASE) for p in self.INDOOR_TEMP_PATTERNS
         ]
 
-    def categorize_sensor(self, entity: Dict[str, Any]) -> SensorCategory:
+    def categorize_sensor(self, entity: dict[str, Any]) -> SensorCategory:
         """
         Categorize a single sensor entity
 
@@ -245,13 +245,13 @@ class SensorCategorizer:
 
         return SensorCategory.OTHER
 
-    def _matches_patterns(self, text: str, patterns: List[re.Pattern]) -> bool:
+    def _matches_patterns(self, text: str, patterns: list[re.Pattern]) -> bool:
         """Check if text matches any of the patterns"""
         return any(pattern.search(text) for pattern in patterns)
 
     def categorize_sensors(
-        self, entities: List[Dict[str, Any]]
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self, entities: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """
         Categorize all sensor entities
 
@@ -277,8 +277,8 @@ class SensorCategorizer:
         return categorized
 
     def get_category_summary(
-        self, categorized: Dict[str, List[Dict[str, Any]]]
-    ) -> Dict[str, Any]:
+        self, categorized: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, Any]:
         """
         Get summary statistics for categorized sensors
 
@@ -305,7 +305,7 @@ class SensorCategorizer:
 
         return summary
 
-    def get_sensor_details(self, entity: Dict[str, Any]) -> Dict[str, Any]:
+    def get_sensor_details(self, entity: dict[str, Any]) -> dict[str, Any]:
         """
         Get detailed information about a sensor
 
@@ -330,8 +330,8 @@ class SensorCategorizer:
         }
 
     def filter_by_categories(
-        self, entities: List[Dict[str, Any]], categories: List[str]
-    ) -> List[Dict[str, Any]]:
+        self, entities: list[dict[str, Any]], categories: list[str]
+    ) -> list[dict[str, Any]]:
         """
         Filter entities by specific categories
 
@@ -358,8 +358,8 @@ class SensorCategorizer:
         return filtered
 
     def get_recommendations(
-        self, categorized: Dict[str, List[Dict[str, Any]]]
-    ) -> List[str]:
+        self, categorized: dict[str, list[dict[str, Any]]]
+    ) -> list[str]:
         """
         Get recommendations based on sensor categorization
 

@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from tests.conftest import MockTodoistTask, MockTodoistDue
+from tests.conftest import MockTodoistDue, MockTodoistTask
 
 
 class MockTodoistDueCustom:

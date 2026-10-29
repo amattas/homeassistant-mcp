@@ -1,14 +1,16 @@
 """Unit tests for Todoist service"""
 
-import pytest
-from unittest.mock import patch
 from datetime import date
+from unittest.mock import patch
+
+import pytest
 from services.todoist import TodoistService
+
 from tests.conftest import (
-    MockTodoistTask,
-    MockTodoistProject,
-    MockTodoistLabel,
     MockTodoistDue,
+    MockTodoistLabel,
+    MockTodoistProject,
+    MockTodoistTask,
 )
 
 
@@ -26,17 +28,21 @@ class TestTodoistService:
 
     def test_init_with_env_token(self):
         """Test service initialization with environment variable"""
-        with patch.dict("os.environ", {"TODOIST_API_TOKEN": "env_token"}):
-            with patch("services.todoist.TodoistAPI") as mock_api:
-                service = TodoistService()
-                assert service.api_token == "env_token"
-                mock_api.assert_called_once_with("env_token")
+        with (
+            patch.dict("os.environ", {"TODOIST_API_TOKEN": "env_token"}),
+            patch("services.todoist.TodoistAPI") as mock_api,
+        ):
+            service = TodoistService()
+            assert service.api_token == "env_token"
+            mock_api.assert_called_once_with("env_token")
 
     def test_init_without_token_raises_error(self):
         """Test that initialization without token raises ValueError"""
-        with patch.dict("os.environ", {}, clear=True):
-            with pytest.raises(ValueError, match="Todoist API token is required"):
-                TodoistService()
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            pytest.raises(ValueError, match="Todoist API token is required"),
+        ):
+            TodoistService()
 
     # ========== VALIDATION TESTS ==========
 

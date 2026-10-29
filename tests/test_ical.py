@@ -1,11 +1,12 @@
 """Unit tests for iCalendar service"""
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, Mock
-from datetime import datetime, timezone
-from services.ical import MultiCalendarService, CalendarFeed
-from icalendar import Calendar, Event
 import requests
+from icalendar import Calendar, Event
+from services.ical import CalendarFeed, MultiCalendarService
 
 
 class TestCalendarFeed:
@@ -258,8 +259,8 @@ class TestMultiCalendarService:
 
         event = Event()
         event.add("summary", "Test Event")
-        event.add("dtstart", datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc))
-        event.add("dtend", datetime(2024, 1, 1, 11, 0, 0, tzinfo=timezone.utc))
+        event.add("dtstart", datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC))
+        event.add("dtend", datetime(2024, 1, 1, 11, 0, 0, tzinfo=UTC))
         event.add("uid", "test-event@example.com")
         cal.add_component(event)
 
@@ -290,9 +291,9 @@ class TestMultiCalendarService:
             event = Event()
             event.add("summary", f"{name} Event")
             event.add(
-                "dtstart", datetime(2024, 1, i + 1, 10, 0, 0, tzinfo=timezone.utc)
+                "dtstart", datetime(2024, 1, i + 1, 10, 0, 0, tzinfo=UTC)
             )
-            event.add("dtend", datetime(2024, 1, i + 1, 11, 0, 0, tzinfo=timezone.utc))
+            event.add("dtend", datetime(2024, 1, i + 1, 11, 0, 0, tzinfo=UTC))
             event.add("uid", f"{name.lower()}-event@example.com")
             cal.add_component(event)
 
@@ -302,7 +303,7 @@ class TestMultiCalendarService:
         with patch("recurring_ical_events.of") as mock_recurring:
             # Return the event for each call
             mock_recurring.side_effect = [
-                [list(cal.walk("VEVENT"))[0]]
+                [next(iter(cal.walk("VEVENT")))]
                 for cal in [f.calendar for f in service.feeds.values()]
             ]
 
@@ -330,8 +331,8 @@ class TestMultiCalendarService:
         for title in ["Meeting with John", "Lunch break", "Meeting with Jane"]:
             event = Event()
             event.add("summary", title)
-            event.add("dtstart", datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc))
-            event.add("dtend", datetime(2024, 1, 1, 11, 0, 0, tzinfo=timezone.utc))
+            event.add("dtstart", datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC))
+            event.add("dtend", datetime(2024, 1, 1, 11, 0, 0, tzinfo=UTC))
             event.add("uid", f'{title.replace(" ", "-")}@example.com')
             cal.add_component(event)
 
@@ -361,9 +362,9 @@ class TestMultiCalendarService:
             event = Event()
             event.add("summary", f"Event {i}")
             event.add(
-                "dtstart", datetime(2024, 1, i + 1, 10, 0, 0, tzinfo=timezone.utc)
+                "dtstart", datetime(2024, 1, i + 1, 10, 0, 0, tzinfo=UTC)
             )
-            event.add("dtend", datetime(2024, 1, i + 1, 11, 0, 0, tzinfo=timezone.utc))
+            event.add("dtend", datetime(2024, 1, i + 1, 11, 0, 0, tzinfo=UTC))
             event.add("uid", f"event-{i}@example.com")
             cal.add_component(event)
             mock_events.append(event)
@@ -408,7 +409,7 @@ class TestMultiCalendarService:
         # Add some feeds
         feed1 = CalendarFeed("https://example.com/feed1.ics", "Feed 1")
         feed2 = CalendarFeed("https://example.com/feed2.ics", "Feed 2")
-        feed1.last_fetch = datetime.now(timezone.utc)
+        feed1.last_fetch = datetime.now(UTC)
         feed2.error = "Test error"
         service.feeds[feed1.id] = feed1
         service.feeds[feed2.id] = feed2
