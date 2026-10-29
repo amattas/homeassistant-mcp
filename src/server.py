@@ -4,23 +4,24 @@ Home Assistant MCP Server
 A specialized MCP server for Home Assistant device control and monitoring
 """
 
-import os
 import logging
-from typing import Optional, Dict, Any
-from dotenv import dotenv_values
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
+from dotenv import dotenv_values
 from fastmcp import FastMCP
+
+from ._version import __version__
+from .services.cache import RedisCache
 
 # Import our service modules
 from .services.homeassistant import HomeAssistantClient
-from .services.cache import RedisCache
-from ._version import __version__
 
 # Load environment variables with correct precedence
-config: Dict[str, str] = {}
+config: dict[str, str] = {}
 
 # Load from project directory if available
 for filename in (".env", ".env.local"):
@@ -52,11 +53,11 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP(name="HomeAssistantMCP", version=__version__)
 
 # Service instances (will be initialized on first use)
-_ha_service: Optional[HomeAssistantClient] = None
-_cache_service: Optional[RedisCache] = None
+_ha_service: HomeAssistantClient | None = None
+_cache_service: RedisCache | None = None
 
 
-def get_ha_service() -> Optional[HomeAssistantClient]:
+def get_ha_service() -> HomeAssistantClient | None:
     """Get or initialize the Home Assistant service"""
     global _ha_service
 
@@ -101,7 +102,7 @@ def get_ha_service() -> Optional[HomeAssistantClient]:
     return _ha_service
 
 
-def get_cache_service() -> Optional[RedisCache]:
+def get_cache_service() -> RedisCache | None:
     """Get or initialize the Redis cache service"""
     global _cache_service
 
@@ -140,7 +141,7 @@ def get_cache_service() -> Optional[RedisCache]:
     title="Server Status",
     annotations={"title": "Server Status"},
 )
-def get_server_status() -> Dict[str, Any]:
+def get_server_status() -> dict[str, Any]:
     """Get the status of the Home Assistant service"""
     status = {"server": "HomeAssistantMCP", "version": __version__, "services": {}}
 
@@ -183,7 +184,7 @@ def get_server_status() -> Dict[str, Any]:
     title="Server Configuration",
     annotations={"title": "Server Configuration"},
 )
-def get_server_config() -> Dict[str, Any]:
+def get_server_config() -> dict[str, Any]:
     """Get the current server configuration (non-sensitive)"""
     return {
         "debug_mode": os.getenv("DEBUG", "false").lower() == "true",
@@ -222,7 +223,7 @@ def get_server_config() -> Dict[str, Any]:
     title="Current Date & Time",
     annotations={"title": "Current Date & Time"},
 )
-def get_current_datetime() -> Dict[str, Any]:
+def get_current_datetime() -> dict[str, Any]:
     """Get the current date and time in the configured timezone"""
     # Get timezone from environment variable, default to UTC
     timezone_str = os.getenv("TIMEZONE", "UTC")
@@ -274,7 +275,7 @@ def get_current_datetime() -> Dict[str, Any]:
     title="Cache Statistics",
     annotations={"title": "Cache Statistics"},
 )
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """Get cache statistics"""
     cache = get_cache_service()
     if not cache:
@@ -304,7 +305,7 @@ def get_cache_stats() -> Dict[str, Any]:
     title="Clear Cache",
     annotations={"title": "Clear Cache"},
 )
-def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
+def clear_cache(pattern: str | None = None) -> dict[str, Any]:
     """Clear cache entries"""
     cache = get_cache_service()
     if not cache:
@@ -344,7 +345,7 @@ def clear_cache(pattern: Optional[str] = None) -> Dict[str, Any]:
     title="Cache Information",
     annotations={"title": "Cache Information"},
 )
-def get_cache_info() -> Dict[str, Any]:
+def get_cache_info() -> dict[str, Any]:
     """Get Redis server information"""
     cache = get_cache_service()
     if not cache:
@@ -383,7 +384,7 @@ def get_cache_info() -> Dict[str, Any]:
     title="Reset Cache Statistics",
     annotations={"title": "Reset Cache Statistics"},
 )
-def reset_cache_stats() -> Dict[str, Any]:
+def reset_cache_stats() -> dict[str, Any]:
     """Reset cache statistics"""
     cache = get_cache_service()
     if not cache:

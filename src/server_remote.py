@@ -5,11 +5,12 @@ Supports dual-factor path-based authentication
 Designed for Azure Container Apps and other cloud platforms with SSL termination
 """
 
+import asyncio
+import hashlib
+import logging
 import os
 import sys
-import logging
-import hashlib
-import asyncio
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -57,12 +58,13 @@ if api_key:
     # Use dual-factor path-based authentication if API key is set
     logger.info("MCP_API_KEY is set - using dual-factor path-based authentication")
 
-    from fastapi import FastAPI, Request, HTTPException
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import Response
     from starlette.middleware.base import BaseHTTPMiddleware
-    import uvicorn
-    from .server import mcp
+
     from ._version import __version__
+    from .server import mcp
 
     # Get configuration
     port = int(os.getenv("PORT", "8080"))
