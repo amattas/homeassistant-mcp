@@ -1,9 +1,10 @@
 name: Python package
 
+# Manual-only. When run on main, the final `docs` job calls docs.yml to republish
+# the versioned docs once every test job has passed. Release docs are published by
+# create-release.yml after it tags X.Y.Z.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install black ruff mypy bandit pip-audit
+          pip install pyyaml black ruff mypy bandit pip-audit
 
       - name: Format check with Black
         run: |
@@ -54,3 +55,10 @@ jobs:
         run: |
           pip-audit -s
         continue-on-error: true
+
+  docs:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write  # docs.yml pushes the gh-pages branch
+    uses: ./.github/workflows/docs.yml
