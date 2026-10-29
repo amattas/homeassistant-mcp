@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from dotenv import dotenv_values
 from fastmcp import FastMCP
 
+from ._version import __version__
 from .services.cache import RedisCache
 
 # Import our service modules
@@ -49,7 +50,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
-mcp = FastMCP(name="HomeAssistantMCP")
+mcp = FastMCP(name="HomeAssistantMCP", version=__version__)
 
 # Service instances (will be initialized on first use)
 _ha_service: HomeAssistantClient | None = None
@@ -142,7 +143,7 @@ def get_cache_service() -> RedisCache | None:
 )
 def get_server_status() -> dict[str, Any]:
     """Get the status of the Home Assistant service"""
-    status = {"server": "HomeAssistantMCP", "version": "1.0.0", "services": {}}
+    status = {"server": "HomeAssistantMCP", "version": __version__, "services": {}}
 
     # Check Home Assistant service
     ha_service = get_ha_service()

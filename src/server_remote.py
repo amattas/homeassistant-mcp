@@ -63,6 +63,7 @@ if api_key:
     from fastapi.responses import Response
     from starlette.middleware.base import BaseHTTPMiddleware
 
+    from ._version import __version__
     from .server import mcp
 
     # Get configuration
@@ -164,7 +165,7 @@ if api_key:
         return {
             "status": "healthy",
             "initialized": _services_initialized,
-            "version": "1.0.0",
+            "version": __version__,
             "server": "HomeAssistantMCP",
         }
 
