@@ -62,6 +62,7 @@ if api_key:
     from starlette.middleware.base import BaseHTTPMiddleware
     import uvicorn
     from .server import mcp
+    from ._version import __version__
 
     # Get configuration
     port = int(os.getenv("PORT", "8080"))
@@ -162,7 +163,7 @@ if api_key:
         return {
             "status": "healthy",
             "initialized": _services_initialized,
-            "version": "1.0.0",
+            "version": __version__,
             "server": "HomeAssistantMCP",
         }
 

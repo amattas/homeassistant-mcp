@@ -17,6 +17,7 @@ from fastmcp import FastMCP
 # Import our service modules
 from .services.homeassistant import HomeAssistantClient
 from .services.cache import RedisCache
+from ._version import __version__
 
 # Load environment variables with correct precedence
 config: Dict[str, str] = {}
@@ -48,7 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
-mcp = FastMCP(name="HomeAssistantMCP")
+mcp = FastMCP(name="HomeAssistantMCP", version=__version__)
 
 # Service instances (will be initialized on first use)
 _ha_service: Optional[HomeAssistantClient] = None
@@ -141,7 +142,7 @@ def get_cache_service() -> Optional[RedisCache]:
 )
 def get_server_status() -> Dict[str, Any]:
     """Get the status of the Home Assistant service"""
-    status = {"server": "HomeAssistantMCP", "version": "1.0.0", "services": {}}
+    status = {"server": "HomeAssistantMCP", "version": __version__, "services": {}}
 
     # Check Home Assistant service
     ha_service = get_ha_service()
