@@ -1,12 +1,14 @@
 """Unit tests for Home Assistant service"""
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import patch, Mock
 import requests
+
 from services.homeassistant import (
-    HomeAssistantService,
-    HomeAssistantClient,
     ConnectionType,
+    HomeAssistantClient,
+    HomeAssistantService,
 )
 
 

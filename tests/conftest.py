@@ -1,10 +1,10 @@
 """Shared fixtures and configuration for tests"""
 
 import os
-import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import datetime, date, timezone, timedelta
+from datetime import UTC, date, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ============================================================================
 # Mock Classes
@@ -23,7 +23,7 @@ class MockTodoistTask:
         self.priority = kwargs.get("priority", 1)
         self.comment_count = kwargs.get("comment_count", 0)
         self.created_at = kwargs.get(
-            "created_at", datetime.now(timezone.utc).isoformat()
+            "created_at", datetime.now(UTC).isoformat()
         )
         self.creator_id = kwargs.get("creator_id", "user123")
         self.assignee_id = kwargs.get("assignee_id", None)
@@ -96,7 +96,7 @@ class MockTodoistComment:
     def __init__(self, **kwargs):
         self.id = kwargs.get("id", "comment123")
         self.content = kwargs.get("content", "Test comment")
-        self.posted_at = kwargs.get("posted_at", datetime.now(timezone.utc).isoformat())
+        self.posted_at = kwargs.get("posted_at", datetime.now(UTC).isoformat())
         self.task_id = kwargs.get("task_id", None)
         self.project_id = kwargs.get("project_id", None)
         self.attachment = kwargs.get("attachment", None)
@@ -227,17 +227,16 @@ def homeassistant_client(mock_websocket, mock_ha_responses):
     """Create HomeAssistantClient with mocked WebSocket"""
     with patch.dict(
         os.environ, {"HA_URL": "http://localhost:8123", "HA_TOKEN": "test_token"}
-    ):
-        with patch("requests.get") as mock_get:
-            mock_get.return_value.json.return_value = mock_ha_responses["states"]
-            mock_get.return_value.status_code = 200
+    ), patch("requests.get") as mock_get:
+        mock_get.return_value.json.return_value = mock_ha_responses["states"]
+        mock_get.return_value.status_code = 200
 
-            from services.homeassistant import HomeAssistantClient
+        from services.homeassistant import HomeAssistantClient
 
-            client = HomeAssistantClient(
-                url="http://localhost:8123", access_token="test_token"
-            )
-            return client
+        client = HomeAssistantClient(
+            url="http://localhost:8123", access_token="test_token"
+        )
+        return client
 
 
 # ============================================================================
@@ -410,7 +409,7 @@ def async_mock():
 @pytest.fixture
 def test_dates():
     """Common test dates"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "today": now.date(),
         "tomorrow": (now + timedelta(days=1)).date(),
