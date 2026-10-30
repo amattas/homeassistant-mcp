@@ -12,6 +12,7 @@ python -m pytest tests/ \
     --cov-report=term-missing \
     --cov-report=html \
     -v
+status=$?
 
 # Show summary
 echo ""
@@ -21,3 +22,6 @@ python -m pytest tests/ --co -q | grep "test session" -A 1
 
 echo ""
 echo "Coverage report saved to htmlcov/index.html"
+
+# Exit with pytest's status so CI fails on test or collection errors.
+exit "$status"
