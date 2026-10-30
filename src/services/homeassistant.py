@@ -3,32 +3,21 @@
 import json
 import logging
 import os
-
-import requests
-
-from .cache import CacheConfig, CacheTTL, cache_aside
-
-try:
-    import websocket
-except ImportError:
-    # Try alternative import if websocket-client not found
-    try:
-        from websocket import WebSocket as websocket
-    except ImportError:
-        websocket = None
-        logging.getLogger(__name__).warning(
-            "websocket-client not available - WebSocket features disabled"
-        )
 import ssl
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+import requests
+import websocket
+
+from .cache import CacheConfig, CacheTTL, cache_aside
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-    from services.cache import RedisCache
+    from .cache import RedisCache
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +86,9 @@ class HomeAssistantService:
             "Content-Type": "application/json",
         }
         self.timeout = 30  # seconds
-        self.areas_cache: list[dict] | None = None
-        self.devices_cache: list[dict] | None = None
-        self.entities_cache: dict[str, dict] | None = None
+        self.areas_cache: list[dict[str, Any]] | None = None
+        self.devices_cache: list[dict[str, Any]] | None = None
+        self.entities_cache: dict[str, dict[str, Any]] | None = None
 
         logger.info(
             f"Initialized Home Assistant service ({self.connection_type.value}): {self.url}"
@@ -171,7 +160,7 @@ class HomeAssistantService:
             # Convert to int if string
             try:
                 brightness_int = int(brightness)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 raise ValueError(
                     f"Invalid brightness value: {brightness}. Brightness must be an integer between 0-255.\n"
                     "Examples:\n"
@@ -298,7 +287,8 @@ class HomeAssistantService:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
     def get_states(
         self,
@@ -329,7 +319,7 @@ class HomeAssistantService:
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            states = response.json()
+            states: list[dict[str, Any]] = response.json()
         except Exception as e:
             logger.error(f"Failed to get states: {e}")
             raise ValueError(
@@ -403,7 +393,7 @@ class HomeAssistantService:
         domain: str,
         service: str,
         entity_id: str | list[str] | None = None,
-        **service_data,
+        **service_data: Any,
     ) -> dict[str, Any]:
         """
         Call a Home Assistant service
@@ -504,7 +494,7 @@ class HomeAssistantService:
                 "  • Check Home Assistant logs for more details"
             )
 
-    def turn_on(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def turn_on(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Turn on an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -520,7 +510,7 @@ class HomeAssistantService:
         )
         return self.call_service(domain, "turn_on", entity_id=entity_id, **kwargs)
 
-    def turn_off(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def turn_off(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Turn off an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -532,7 +522,7 @@ class HomeAssistantService:
         )
         return self.call_service(domain, "turn_off", entity_id=entity_id, **kwargs)
 
-    def toggle(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def toggle(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Toggle an entity"""
         # Validate entity_id first
         self._validate_entity_id(entity_id)
@@ -572,6 +562,10 @@ class HomeAssistantService:
                 return self.call_service(
                     domain, "set_datetime", entity_id=entity_id, **value
                 )
+            return {
+                "status": "error",
+                "error": "input_datetime value must be a string or a dict",
+            }
         else:
             return {
                 "status": "error",
@@ -582,7 +576,7 @@ class HomeAssistantService:
         """Activate a scene"""
         return self.call_service("scene", "turn_on", entity_id=scene_id)
 
-    def run_script(self, script_id: str, **variables) -> dict[str, Any]:
+    def run_script(self, script_id: str, **variables: Any) -> dict[str, Any]:
         """Run a script with optional variables"""
         return self.call_service(
             "script", "turn_on", entity_id=script_id, variables=variables
@@ -597,10 +591,10 @@ class HomeAssistantService:
         message: str,
         title: str | None = None,
         service_name: str = "notify",
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Send a notification"""
-        data = {"message": message}
+        data: dict[str, Any] = {"message": message}
         if title:
             data["title"] = title
         data.update(kwargs)
@@ -700,11 +694,6 @@ class HomeAssistantService:
 
     def _get_areas_via_websocket(self) -> list[dict[str, Any]] | None:
         """Get areas via WebSocket API when REST is not available"""
-        if websocket is None:
-            logger.warning(
-                "WebSocket support not available - websocket-client not installed"
-            )
-            return None
         try:
             # Convert HTTP URL to WebSocket URL
             ws_url = self.url.replace("http://", "ws://").replace("https://", "wss://")
@@ -748,7 +737,7 @@ class HomeAssistantService:
                 data = json.loads(response)
 
                 if data.get("success"):
-                    areas = data.get("result", [])
+                    areas: list[dict[str, Any]] = data.get("result", [])
                     logger.info(
                         f"Successfully retrieved {len(areas)} areas via WebSocket"
                     )
@@ -838,15 +827,15 @@ class HomeAssistantService:
             if e.response.status_code == 404:
                 # Fallback: Extract device METADATA from states (not current values)
                 states = self.get_states()
-                devices = {}
+                devices_by_id: dict[str, dict[str, Any]] = {}
 
                 for state in states:
                     # Extract device info from attributes if available
                     attrs = state.get("attributes", {})
                     device_id = attrs.get("device_id")
 
-                    if device_id and device_id not in devices:
-                        devices[device_id] = {
+                    if device_id and device_id not in devices_by_id:
+                        devices_by_id[device_id] = {
                             "id": device_id,
                             "name": attrs.get("device_name", f"Device {device_id}"),
                             "manufacturer": attrs.get("manufacturer"),
@@ -859,16 +848,18 @@ class HomeAssistantService:
                         }
 
                     if device_id:
-                        devices[device_id]["entities"].append(state.get("entity_id"))
+                        devices_by_id[device_id]["entities"].append(
+                            state.get("entity_id")
+                        )
 
                 # If no devices found from states, return empty list with message
-                if not devices:
+                if not devices_by_id:
                     logger.info(
                         "Device registry not available through Nabu Casa, and no device info in states"
                     )
                     return []
 
-                self.devices_cache = list(devices.values())
+                self.devices_cache = list(devices_by_id.values())
                 devices_list = self.devices_cache
 
                 # Apply pagination
@@ -988,7 +979,8 @@ class HomeAssistantService:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
     def get_history(
         self,
@@ -1086,7 +1078,8 @@ class HomeAssistantService:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        result: list[dict[str, Any]] = response.json()
+        return result
 
     def fire_event(
         self, event_type: str, event_data: dict[str, Any] | None = None
@@ -1132,7 +1125,7 @@ class HomeAssistantService:
         Returns:
             New state object
         """
-        data = {"state": state}
+        data: dict[str, Any] = {"state": state}
         if attributes:
             data["attributes"] = attributes
 
@@ -1144,7 +1137,8 @@ class HomeAssistantService:
             timeout=self.timeout,
         )
         response.raise_for_status()
-        return response.json()
+        result: dict[str, Any] = response.json()
+        return result
 
 
 class HomeAssistantClient:
@@ -1155,8 +1149,8 @@ class HomeAssistantClient:
         url: str | None = None,
         access_token: str | None = None,
         verify_ssl: bool = True,
-        mcp: Optional["FastMCP"] = None,
-        cache: Optional["RedisCache"] = None,
+        mcp: FastMCP | None = None,
+        cache: RedisCache | None = None,
     ):
         """
         Initialize Home Assistant client
@@ -1211,20 +1205,20 @@ class HomeAssistantClient:
         domain: str,
         service: str,
         entity_id: str | list[str] | None = None,
-        **service_data,
+        **service_data: Any,
     ) -> dict[str, Any]:
         """Call Home Assistant service"""
         return self.service.call_service(domain, service, entity_id, **service_data)
 
-    def turn_on(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def turn_on(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Turn on an entity"""
         return self.service.turn_on(entity_id, **kwargs)
 
-    def turn_off(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def turn_off(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Turn off an entity"""
         return self.service.turn_off(entity_id, **kwargs)
 
-    def toggle(self, entity_id: str | list[str], **kwargs) -> dict[str, Any]:
+    def toggle(self, entity_id: str | list[str], **kwargs: Any) -> dict[str, Any]:
         """Toggle an entity"""
         return self.service.toggle(entity_id, **kwargs)
 
@@ -1236,7 +1230,7 @@ class HomeAssistantClient:
         """Activate a scene"""
         return self.service.activate_scene(scene_id)
 
-    def run_script(self, script_id: str, **variables) -> dict[str, Any]:
+    def run_script(self, script_id: str, **variables: Any) -> dict[str, Any]:
         """Run a script"""
         return self.service.run_script(script_id, **variables)
 
@@ -1249,7 +1243,7 @@ class HomeAssistantClient:
         message: str,
         title: str | None = None,
         service_name: str = "notify",
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Send a notification"""
         return self.service.send_notification(message, title, service_name, **kwargs)
@@ -1312,8 +1306,11 @@ class HomeAssistantClient:
         """Set entity state"""
         return self.service.set_state(entity_id, state, attributes)
 
-    def _register_mcp_tools(self):
+    def _register_mcp_tools(self) -> None:
         """Register MCP tools for this service"""
+        mcp = self.mcp
+        if mcp is None:
+            return
         # NOTE: Getter tools commented out - use resources instead for read-only data
         # Resources provide: states, areas, devices, entities, services
         # Commented tools: ha_get_states, ha_get_areas
@@ -1327,7 +1324,7 @@ class HomeAssistantClient:
         # )(self.get_states)
 
         # Control tools
-        self.mcp.tool(
+        mcp.tool(
             name="turn_on_device",
             description="""Turn on a Home Assistant device to its default/full state.
 
@@ -1353,7 +1350,7 @@ Success status with entity state
             annotations={"title": "Turn On Device"},
         )(self.turn_on_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="turn_off_device",
             description="""Turn off a Home Assistant device completely.
 
@@ -1379,7 +1376,7 @@ Success status with entity state
             annotations={"title": "Turn Off Device"},
         )(self.turn_off_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="toggle_device",
             description="""Toggle a Home Assistant device between on and off states.
 
@@ -1398,7 +1395,7 @@ Success status with new entity state
             annotations={"title": "Toggle Device"},
         )(self.toggle_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="set_light_level",
             description="""Set a light to a specific brightness level using percentage.
 
@@ -1433,7 +1430,7 @@ Success status with light state
         )(self.set_light_level_for_mcp)
 
         # Climate control
-        self.mcp.tool(
+        mcp.tool(
             name="set_climate_control",
             description="""Control climate/thermostat settings.
 
@@ -1458,7 +1455,7 @@ Success status with climate entity state
         )(self.set_climate_for_mcp)
 
         # Cover control
-        self.mcp.tool(
+        mcp.tool(
             name="control_cover",
             description="""Control covers, blinds, shades, or garage doors.
 
@@ -1480,7 +1477,7 @@ Success status with cover state
         )(self.control_cover_for_mcp)
 
         # Lock control
-        self.mcp.tool(
+        mcp.tool(
             name="control_lock",
             description="""Control smart locks.
 
@@ -1502,7 +1499,7 @@ Success status with lock state
         )(self.lock_control_for_mcp)
 
         # Scene and automation
-        self.mcp.tool(
+        mcp.tool(
             name="activate_scene",
             description="""Activate a predefined Home Assistant scene.
 
@@ -1521,7 +1518,7 @@ Success status
             annotations={"title": "Activate Scene"},
         )(self.activate_scene)
 
-        self.mcp.tool(
+        mcp.tool(
             name="run_script",
             description="""Execute a Home Assistant script.
 
@@ -1541,7 +1538,7 @@ Success status
             annotations={"title": "Run Script"},
         )(self.run_script_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="trigger_automation",
             description="""Manually trigger a Home Assistant automation.
 
@@ -1561,7 +1558,7 @@ Success status
         )(self.trigger_automation)
 
         # Media control
-        self.mcp.tool(
+        mcp.tool(
             name="control_media_player",
             description="""Control media players.
 
@@ -1584,7 +1581,7 @@ Success status with media player state
         )(self.control_media_for_mcp)
 
         # Area control
-        self.mcp.tool(
+        mcp.tool(
             name="control_area_devices",
             description="""Control all devices of a specific type in an area or room.
 
@@ -1607,7 +1604,7 @@ Success status with list of controlled entities
         )(self.control_area_for_mcp)
 
         # Notification
-        self.mcp.tool(
+        mcp.tool(
             name="send_notification",
             description="""Send notifications through Home Assistant.
 
@@ -1637,7 +1634,7 @@ Success/error status
         # )(self.get_areas_for_mcp)
 
         # Generic service call
-        self.mcp.tool(
+        mcp.tool(
             name="call_home_assistant_service",
             description="""Call any Home Assistant service directly.
 
@@ -1663,7 +1660,7 @@ Service call result
         )(self.call_service_for_mcp)
 
         # Convert all to tools (Claude cannot use resources, only tools)
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_states",
             description=f"""Get current states of Home Assistant entities with optional filtering and pagination (cached for {CacheTTL.HA_STATES} seconds).
 
@@ -1696,7 +1693,7 @@ Service call result
         )(self.get_states_paginated_for_mcp)
 
         # Parameterized queries as tools (Claude can only get static resources)
-        self.mcp.tool(
+        mcp.tool(
             name="get_states_by_domain",
             description=f"""Get states of all entities in a specific domain (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -1721,7 +1718,7 @@ Entity states for the specified domain
             annotations={"title": "Get States by Domain"},
         )(self.get_states_by_domain_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_states_by_area",
             description=f"""Get states of all entities in a specific area (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -1746,7 +1743,7 @@ Entity states for the specified area
             annotations={"title": "Get States by Area"},
         )(self.get_states_by_area_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_areas",
             description=f"""Get all configured areas/rooms in your Home Assistant setup (cached for {CacheTTL.HA_AREAS // 3600} hour).
 
@@ -1772,7 +1769,7 @@ Entity states for the specified area
             annotations={"title": "Home Areas"},
         )(self.get_areas_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_devices",
             description=f"""Get all devices registered in Home Assistant (cached for {CacheTTL.HA_DEVICE_LIST // 60} minutes).
 
@@ -1803,7 +1800,7 @@ Entity states for the specified area
             annotations={"title": "All Devices"},
         )(self.get_devices_paginated_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_entities",
             description=f"""Get all entities configured in Home Assistant (cached for {CacheTTL.HA_ENTITY_LIST // 60} minutes).
 
@@ -1834,7 +1831,7 @@ Entity states for the specified area
             annotations={"title": "All Entities"},
         )(self.get_entities_paginated_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_services",
             description=f"""Get all available services that can be called in Home Assistant (cached for {CacheTTL.HA_SERVICES // 3600} hour).
 
@@ -1857,7 +1854,7 @@ Entity states for the specified area
         )(self.get_services_resource)
 
         # Keep these as tools since they have required parameters
-        self.mcp.tool(
+        mcp.tool(
             name="get_entity_state",
             description="""Get detailed state information for a specific entity.
 
@@ -1879,7 +1876,7 @@ Entity states for the specified area
             annotations={"title": "Get Entity State"},
         )(self.get_entity_state_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_entity_history",
             description="""Get recent history for a specific entity.
 
@@ -1901,7 +1898,7 @@ Entity states for the specified area
             annotations={"title": "Get Entity History"},
         )(self.get_entity_history_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_sensors_by_type",
             description="""Get all sensors of a specific type.
 
@@ -1921,7 +1918,7 @@ All sensors of the specified type with current values
             annotations={"title": "Get Sensors by Type"},
         )(self.get_sensors_by_type_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_scenes",
             description="""Get all available scenes that can be activated.
 
@@ -1938,7 +1935,7 @@ All sensors of the specified type with current values
             annotations={"title": "Available Scenes"},
         )(self.get_scenes_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_automations",
             description="""Get all configured automations with their status.
 
@@ -1956,7 +1953,7 @@ All sensors of the specified type with current values
             annotations={"title": "Automations"},
         )(self.get_automations_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_scripts",
             description="""Get all configured scripts that can be executed.
 
@@ -1973,7 +1970,7 @@ All sensors of the specified type with current values
             annotations={"title": "Available Scripts"},
         )(self.get_scripts_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_unavailable_entities",
             description="""Get all entities that are currently unavailable or offline.
 
@@ -1992,7 +1989,7 @@ All sensors of the specified type with current values
         )(self.get_unavailable_entities_resource)
 
         # Tools for constant values (for LLM discovery)
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_domains",
             description="""Get all available entity domains in Home Assistant.
 
@@ -2009,7 +2006,7 @@ All sensors of the specified type with current values
             annotations={"title": "Entity Domains"},
         )(self.get_domains_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_device_classes",
             description="""Get available device classes for different entity types.
 
@@ -2026,7 +2023,7 @@ All sensors of the specified type with current values
             annotations={"title": "Device Classes"},
         )(self.get_device_classes_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_service_names",
             description="""Get commonly used service names for each domain.
 
@@ -2044,7 +2041,7 @@ All sensors of the specified type with current values
         )(self.get_service_names_resource)
 
         # Additional tools for common queries
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_lights_on",
             description=f"""Get all lights that are currently turned on (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2066,7 +2063,7 @@ All sensors of the specified type with current values
             annotations={"title": "Lights Currently On"},
         )(self.get_lights_on_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_devices_on",
             description=f"""Get all devices that are currently on or active (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2088,7 +2085,7 @@ All sensors of the specified type with current values
             annotations={"title": "Devices Currently On"},
         )(self.get_devices_on_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_temperature_sensors",
             description=f"""Get all temperature sensors with current readings (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2110,7 +2107,7 @@ All sensors of the specified type with current values
             annotations={"title": "Temperature Sensors"},
         )(self.get_temperature_sensors_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_motion_sensors",
             description=f"""Get all motion sensors and their current state (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2132,7 +2129,7 @@ All sensors of the specified type with current values
             annotations={"title": "Motion Sensors"},
         )(self.get_motion_sensors_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_door_window_sensors",
             description=f"""Get all door and window sensors with open/closed status (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2154,7 +2151,7 @@ All sensors of the specified type with current values
             annotations={"title": "Door & Window Sensors"},
         )(self.get_door_window_sensors_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_security_status",
             description=f"""Get security-related information (locks, alarms, cameras) (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2176,7 +2173,7 @@ All sensors of the specified type with current values
             annotations={"title": "Security Status"},
         )(self.get_security_status_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_climate_status",
             description=f"""Get current climate control status (thermostats, humidity, air quality) (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2198,7 +2195,7 @@ All sensors of the specified type with current values
             annotations={"title": "Climate Status"},
         )(self.get_climate_status_resource)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_ha_battery_status",
             description=f"""Get battery levels for all battery-powered devices (uses cached data, {CacheTTL.HA_STATES} seconds).
 
@@ -2221,7 +2218,7 @@ All sensors of the specified type with current values
         )(self.get_battery_status_resource)
 
         # Sensor Categorization Tools
-        self.mcp.tool(
+        mcp.tool(
             name="categorize_sensors",
             description="""Categorize all sensors by type (weather, pool, air quality, HVAC, indoor temp, etc.).
 
@@ -2249,7 +2246,7 @@ All sensors of the specified type with current values
             annotations={"title": "Categorize Sensors"},
         )(self.categorize_sensors_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_weather_sensors",
             description="""Get all weather-related sensors.
 
@@ -2268,7 +2265,7 @@ All sensors of the specified type with current values
             annotations={"title": "Weather Sensors"},
         )(self.get_weather_sensors_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_pool_sensors",
             description="""Get all pool and spa related sensors.
 
@@ -2287,7 +2284,7 @@ All sensors of the specified type with current values
             annotations={"title": "Pool Sensors"},
         )(self.get_pool_sensors_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_air_quality_sensors",
             description="""Get all indoor air quality sensors.
 
@@ -2307,7 +2304,7 @@ All sensors of the specified type with current values
             annotations={"title": "Air Quality Sensors"},
         )(self.get_air_quality_sensors_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_hvac_sensors",
             description="""Get all HVAC-related sensors.
 
@@ -2326,7 +2323,7 @@ All sensors of the specified type with current values
             annotations={"title": "HVAC Sensors"},
         )(self.get_hvac_sensors_for_mcp)
 
-        self.mcp.tool(
+        mcp.tool(
             name="get_indoor_temp_sensors",
             description="""Get all indoor temperature sensors (non-HVAC).
 
@@ -2399,7 +2396,7 @@ All sensors of the specified type with current values
                 # Convert percentage to 0-255 scale (with proper rounding)
                 brightness = round((percent / 100) * 255)
 
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return {
                     "error": f"Invalid brightness percentage: {brightness_percent}",
                     "help": "Brightness must be a number between 0-100",
@@ -2433,7 +2430,7 @@ All sensors of the specified type with current values
                         if isinstance(temperature, str)
                         else temperature
                     )
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     return {
                         "error": f"Invalid temperature value: {temperature}",
                         "help": "Temperature must be a number",
@@ -2476,7 +2473,7 @@ All sensors of the specified type with current values
                             "error": f"Invalid position value: {position}",
                             "help": "Position must be between 0-100",
                         }
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     return {
                         "error": f"Invalid position value: {position}",
                         "help": "Position must be a number between 0-100",
@@ -2533,7 +2530,7 @@ All sensors of the specified type with current values
                             "error": f"Invalid volume value: {volume}",
                             "help": "Volume must be between 0.0 and 1.0",
                         }
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     return {
                         "error": f"Invalid volume value: {volume}",
                         "help": "Volume must be a number between 0.0 and 1.0",
@@ -2591,7 +2588,7 @@ All sensors of the specified type with current values
             return {"error": f"No {domain} entities found in area {area_name}"}
 
         results = []
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         if brightness is not None:
             kwargs["brightness"] = brightness
         if color_temp is not None:
@@ -2793,10 +2790,11 @@ All sensors of the specified type with current values
     def get_entity_state_resource(self, entity_id: str) -> dict[str, Any]:
         """Resource providing detailed state for a single entity"""
         try:
-            result = self.get_states(entity_id=entity_id)
+            result = self.get_states(entity_ids=[entity_id])
             states = result.get("states", [])
             if states:
-                return states[0]
+                entity_state: dict[str, Any] = states[0]
+                return entity_state
             else:
                 return {"error": "Entity not found", "entity_id": entity_id}
         except Exception as e:
@@ -2814,7 +2812,7 @@ All sensors of the specified type with current values
                     hours = int(hours)
                     if hours <= 0:
                         hours = 24  # Default to 24 hours if invalid
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     hours = 24  # Default to 24 hours if can't convert
 
             # Get history for the specified period
@@ -2920,7 +2918,7 @@ All sensors of the specified type with current values
     def categorize_sensors(self) -> dict[str, Any]:
         """Categorize all sensors by type (weather, pool, air quality, HVAC, etc.)"""
         try:
-            from helpers.sensor_categorizer import SensorCategorizer
+            from ..helpers.sensor_categorizer import SensorCategorizer
 
             # Get all entities
             result = self.get_states()
@@ -2950,7 +2948,7 @@ All sensors of the specified type with current values
     def get_sensors_by_category(self, category: str) -> dict[str, Any]:
         """Get sensors for a specific category"""
         try:
-            from helpers.sensor_categorizer import SensorCategorizer, SensorCategory
+            from ..helpers.sensor_categorizer import SensorCategorizer, SensorCategory
 
             # Validate category
             try:
@@ -3377,7 +3375,7 @@ All sensors of the specified type with current values
         result = self.get_states()
         all_states = result.get("states", [])
 
-        security_info = {
+        security_info: dict[str, Any] = {
             "locks": [],
             "alarms": [],
             "cameras": [],
@@ -3471,7 +3469,7 @@ All sensors of the specified type with current values
         result = self.get_states()
         all_states = result.get("states", [])
 
-        climate_info = {
+        climate_info: dict[str, Any] = {
             "thermostats": [],
             "temperature_sensors": [],
             "humidity_sensors": [],
@@ -3583,9 +3581,11 @@ All sensors of the specified type with current values
         }
 
     # Helper methods for grouping
-    def _group_by_domain(self, entities: list[dict]) -> dict[str, list[dict]]:
+    def _group_by_domain(
+        self, entities: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Group entities by domain"""
-        grouped = {}
+        grouped: dict[str, list[dict[str, Any]]] = {}
         for entity in entities:
             entity_id = entity.get("entity_id", "")
             domain = entity_id.split(".")[0] if entity_id else "unknown"
@@ -3594,9 +3594,11 @@ All sensors of the specified type with current values
             grouped[domain].append(entity)
         return grouped
 
-    def _group_by_area(self, entities: list[dict]) -> dict[str, list[dict]]:
+    def _group_by_area(
+        self, entities: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Group entities by area"""
-        grouped = {}
+        grouped: dict[str, list[dict[str, Any]]] = {}
         for entity in entities:
             area = entity.get("area") or "No Area"
             if area not in grouped:

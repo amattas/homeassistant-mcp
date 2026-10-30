@@ -148,11 +148,11 @@ class SensorCategorizer:
         r"temp.*inside",
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the sensor categorizer"""
         self.compile_patterns()
 
-    def compile_patterns(self):
+    def compile_patterns(self) -> None:
         """Compile regex patterns for efficiency"""
         self.weather_regex = [
             re.compile(p, re.IGNORECASE) for p in self.WEATHER_PATTERNS
@@ -245,7 +245,7 @@ class SensorCategorizer:
 
         return SensorCategory.OTHER
 
-    def _matches_patterns(self, text: str, patterns: list[re.Pattern]) -> bool:
+    def _matches_patterns(self, text: str, patterns: list[re.Pattern[str]]) -> bool:
         """Check if text matches any of the patterns"""
         return any(pattern.search(text) for pattern in patterns)
 
@@ -261,7 +261,9 @@ class SensorCategorizer:
         Returns:
             Dictionary with categories as keys and lists of entities as values
         """
-        categorized = {category.value: [] for category in SensorCategory}
+        categorized: dict[str, list[dict[str, Any]]] = {
+            category.value: [] for category in SensorCategory
+        }
 
         for entity in entities:
             # Only process sensor entities
@@ -288,18 +290,18 @@ class SensorCategorizer:
         Returns:
             Summary statistics
         """
-        summary = {
-            "total_sensors": sum(len(entities) for entities in categorized.values()),
-            "categories": {},
+        total_sensors = sum(len(entities) for entities in categorized.values())
+        categories: dict[str, dict[str, Any]] = {}
+        summary: dict[str, Any] = {
+            "total_sensors": total_sensors,
+            "categories": categories,
         }
 
         for category, entities in categorized.items():
             if entities:  # Only include non-empty categories
-                summary["categories"][category] = {
+                categories[category] = {
                     "count": len(entities),
-                    "percentage": round(
-                        len(entities) / summary["total_sensors"] * 100, 1
-                    ),
+                    "percentage": round(len(entities) / total_sensors * 100, 1),
                     "sample_entities": [e.get("entity_id") for e in entities[:3]],
                 }
 
@@ -400,7 +402,7 @@ class SensorCategorizer:
         return recommendations
 
 
-def integrate_with_homeassistant(ha_service):
+def integrate_with_homeassistant(ha_service: Any) -> dict[str, Any]:
     """
     Integrate sensor categorization with HomeAssistantService
 

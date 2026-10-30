@@ -232,7 +232,7 @@ def homeassistant_client(mock_websocket, mock_ha_responses):
         mock_get.return_value.json.return_value = mock_ha_responses["states"]
         mock_get.return_value.status_code = 200
 
-        from services.homeassistant import HomeAssistantClient
+        from src.services.homeassistant import HomeAssistantClient
 
         client = HomeAssistantClient(
             url="http://localhost:8123", access_token="test_token"
