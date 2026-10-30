@@ -22,9 +22,7 @@ class MockTodoistTask:
         self.labels = kwargs.get("labels", [])
         self.priority = kwargs.get("priority", 1)
         self.comment_count = kwargs.get("comment_count", 0)
-        self.created_at = kwargs.get(
-            "created_at", datetime.now(UTC).isoformat()
-        )
+        self.created_at = kwargs.get("created_at", datetime.now(UTC).isoformat())
         self.creator_id = kwargs.get("creator_id", "user123")
         self.assignee_id = kwargs.get("assignee_id", None)
         self.assigner_id = kwargs.get("assigner_id", None)
@@ -225,9 +223,12 @@ def mock_ha_responses():
 @pytest.fixture
 def homeassistant_client(mock_websocket, mock_ha_responses):
     """Create HomeAssistantClient with mocked WebSocket"""
-    with patch.dict(
-        os.environ, {"HA_URL": "http://localhost:8123", "HA_TOKEN": "test_token"}
-    ), patch("requests.get") as mock_get:
+    with (
+        patch.dict(
+            os.environ, {"HA_URL": "http://localhost:8123", "HA_TOKEN": "test_token"}
+        ),
+        patch("requests.get") as mock_get,
+    ):
         mock_get.return_value.json.return_value = mock_ha_responses["states"]
         mock_get.return_value.status_code = 200
 

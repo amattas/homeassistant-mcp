@@ -1748,7 +1748,7 @@ Entity states for the specified area
 
         self.mcp.tool(
             name="get_ha_areas",
-            description=f"""Get all configured areas/rooms in your Home Assistant setup (cached for {CacheTTL.HA_AREAS//3600} hour).
+            description=f"""Get all configured areas/rooms in your Home Assistant setup (cached for {CacheTTL.HA_AREAS // 3600} hour).
 
 ## Parameters
 • minimal: Return reduced data (default: True) or full details (False)
@@ -1765,7 +1765,7 @@ Entity states for the specified area
 • Understand room organization
 
 ## Caching & Optimization
-• Data is cached for {CacheTTL.HA_AREAS//3600} hour as areas rarely change
+• Data is cached for {CacheTTL.HA_AREAS // 3600} hour as areas rarely change
 • Use minimal=True (default) for 70% less data transfer
 • Use minimal=False when you need aliases, labels, or pictures""",
             title="Home Areas",
@@ -1774,7 +1774,7 @@ Entity states for the specified area
 
         self.mcp.tool(
             name="get_ha_devices",
-            description=f"""Get all devices registered in Home Assistant (cached for {CacheTTL.HA_DEVICE_LIST//60} minutes).
+            description=f"""Get all devices registered in Home Assistant (cached for {CacheTTL.HA_DEVICE_LIST // 60} minutes).
 
 ## Parameters
 • minimal: Return reduced data (default: True) or full details (False)
@@ -1795,7 +1795,7 @@ Entity states for the specified area
 • Paginate through large device lists
 
 ## Caching & Optimization
-• Device list cached for {CacheTTL.HA_DEVICE_LIST//60} minutes (metadata rarely changes)
+• Device list cached for {CacheTTL.HA_DEVICE_LIST // 60} minutes (metadata rarely changes)
 • Use minimal=True (default) for 50% less data transfer
 • Use minimal=False for version info and technical details
 • Use limit/offset for pagination when dealing with many devices""",
@@ -1805,7 +1805,7 @@ Entity states for the specified area
 
         self.mcp.tool(
             name="get_ha_entities",
-            description=f"""Get all entities configured in Home Assistant (cached for {CacheTTL.HA_ENTITY_LIST//60} minutes).
+            description=f"""Get all entities configured in Home Assistant (cached for {CacheTTL.HA_ENTITY_LIST // 60} minutes).
 
 ## Parameters
 • minimal: Return reduced data (default: True) or full details (False)
@@ -1826,7 +1826,7 @@ Entity states for the specified area
 • Paginate through large entity lists
 
 ## Caching & Optimization
-• Entity list cached for {CacheTTL.HA_ENTITY_LIST//60} minutes (metadata rarely changes)
+• Entity list cached for {CacheTTL.HA_ENTITY_LIST // 60} minutes (metadata rarely changes)
 • Use minimal=True (default) for 40% less data transfer
 • Use minimal=False for icons, units, and entity categories
 • Use limit/offset for pagination when dealing with many entities""",
@@ -1836,7 +1836,7 @@ Entity states for the specified area
 
         self.mcp.tool(
             name="get_ha_services",
-            description=f"""Get all available services that can be called in Home Assistant (cached for {CacheTTL.HA_SERVICES//3600} hour).
+            description=f"""Get all available services that can be called in Home Assistant (cached for {CacheTTL.HA_SERVICES // 3600} hour).
 
 ## Returns
 • Service domains
@@ -1850,7 +1850,7 @@ Entity states for the specified area
 • Service documentation
 
 ## Caching
-• Service list cached for {CacheTTL.HA_SERVICES//3600} hour as services rarely change
+• Service list cached for {CacheTTL.HA_SERVICES // 3600} hour as services rarely change
 • Reduces API calls for service discovery""",
             title="Available Services",
             annotations={"title": "Available Services"},
