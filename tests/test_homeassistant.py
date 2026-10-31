@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from services.homeassistant import (
+from src.services.homeassistant import (
     ConnectionType,
     HomeAssistantClient,
     HomeAssistantService,
@@ -262,7 +262,7 @@ class TestHomeAssistantService:
 
     # ========== AREA AND DEVICE TESTS ==========
 
-    @patch("services.homeassistant.HomeAssistantService._get_areas_via_websocket")
+    @patch("src.services.homeassistant.HomeAssistantService._get_areas_via_websocket")
     @patch("requests.get")
     def test_get_areas(self, mock_get, mock_websocket):
         """Test getting areas"""
@@ -287,7 +287,7 @@ class TestHomeAssistantService:
         assert service.areas_cache[0]["area_id"] == "living_room"
         assert service.areas_cache[0]["name"] == "Living Room"
 
-    @patch("services.homeassistant.HomeAssistantService._get_areas_via_websocket")
+    @patch("src.services.homeassistant.HomeAssistantService._get_areas_via_websocket")
     @patch("requests.get")
     def test_get_areas_non_minimal(self, mock_get, mock_websocket):
         """Test getting areas with minimal=False"""
@@ -410,7 +410,7 @@ class TestHomeAssistantService:
         assert len(devices) == 3
         assert devices[0]["id"] == "device7"
 
-    @patch("services.homeassistant.HomeAssistantService.get_states")
+    @patch("src.services.homeassistant.HomeAssistantService.get_states")
     def test_get_entities(self, mock_get_states):
         """Test getting entities with default minimal=True"""
         service = HomeAssistantService("http://localhost", "token")
@@ -442,7 +442,7 @@ class TestHomeAssistantService:
         assert "icon" not in entities[0]
         assert "unit_of_measurement" not in entities[0]
 
-    @patch("services.homeassistant.HomeAssistantService.get_states")
+    @patch("src.services.homeassistant.HomeAssistantService.get_states")
     def test_get_entities_non_minimal(self, mock_get_states):
         """Test getting entities with minimal=False"""
         service = HomeAssistantService("http://localhost", "token")
@@ -478,7 +478,7 @@ class TestHomeAssistantService:
         assert not entities[0]["hidden"]
         assert not entities[0]["disabled"]
 
-    @patch("services.homeassistant.HomeAssistantService.get_states")
+    @patch("src.services.homeassistant.HomeAssistantService.get_states")
     def test_get_entities_with_pagination(self, mock_get_states):
         """Test getting entities with pagination"""
         service = HomeAssistantService("http://localhost", "token")

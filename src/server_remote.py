@@ -34,7 +34,7 @@ md5_salt = os.getenv("MD5_SALT", "")
 _services_initialized = False
 
 
-def lazy_initialize_services():
+def lazy_initialize_services() -> None:
     """
     Lazy initialization of services - called on first request instead of at startup.
     This dramatically improves cold start time for scale-to-zero scenarios.
@@ -61,7 +61,10 @@ if api_key:
     import uvicorn
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import Response
-    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.middleware.base import (
+        BaseHTTPMiddleware,
+        RequestResponseEndpoint,
+    )
 
     from ._version import __version__
     from .server import mcp
@@ -108,7 +111,9 @@ if api_key:
 
     # Security middleware to add headers
     class SecurityMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next):
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             response = await call_next(request)
 
             # Add security headers
@@ -131,7 +136,9 @@ if api_key:
 
     # Middleware to lazy-initialize services on first real request
     class LazyInitMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next):
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             # Skip lazy init for health check (keeps it fast)
             if request.url.path != "/app/health":
                 lazy_initialize_services()
@@ -157,7 +164,7 @@ if api_key:
     # Ultra-lightweight health check endpoint - no service initialization
     # This endpoint MUST be fast to pass health checks during cold starts
     @app.get("/app/health")
-    async def health_check():
+    async def health_check() -> dict[str, object]:
         """
         Lightweight health check endpoint for container orchestrators.
         Does NOT trigger service initialization to keep cold starts fast.
@@ -175,7 +182,7 @@ if api_key:
 
     # Add a custom 404 handler with anti-brute-force delay
     @app.exception_handler(404)
-    async def not_found_handler(request: Request, exc: HTTPException):
+    async def not_found_handler(request: Request, exc: HTTPException) -> Response:
         # Add 30-second delay for failed authentication attempts to prevent brute forcing
         # Only delay for /app/ paths that look like authentication attempts
         if request.url.path.startswith("/app/") and request.url.path != "/app/health":

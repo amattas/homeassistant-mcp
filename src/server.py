@@ -21,7 +21,7 @@ from .services.cache import RedisCache
 from .services.homeassistant import HomeAssistantClient
 
 # Load environment variables with correct precedence
-config: dict[str, str] = {}
+config: dict[str, str | None] = {}
 
 # Load from project directory if available
 for filename in (".env", ".env.local"):
@@ -37,8 +37,10 @@ for filename in (".env", ".env.local"):
         config.update(dotenv_values(path))
 
 # Apply loaded values without overriding existing environment vars
+# (dotenv_values maps a bare `KEY` line to None; skip those.)
 for key, value in config.items():
-    os.environ.setdefault(key, value)
+    if value is not None:
+        os.environ.setdefault(key, value)
 
 # Configure logging
 logging.basicConfig(
@@ -143,7 +145,11 @@ def get_cache_service() -> RedisCache | None:
 )
 def get_server_status() -> dict[str, Any]:
     """Get the status of the Home Assistant service"""
-    status = {"server": "HomeAssistantMCP", "version": __version__, "services": {}}
+    status: dict[str, Any] = {
+        "server": "HomeAssistantMCP",
+        "version": __version__,
+        "services": {},
+    }
 
     # Check Home Assistant service
     ha_service = get_ha_service()
@@ -395,7 +401,7 @@ def reset_cache_stats() -> dict[str, Any]:
 
 
 # Initialize services on startup
-def initialize_services():
+def initialize_services() -> None:
     """Initialize all configured services"""
     logger.info("Initializing Home Assistant service...")
 
