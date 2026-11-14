@@ -4,7 +4,6 @@ import pytest
 
 # The service module requires project dependencies; skip cleanly when absent
 pytest.importorskip("requests")
-pytest.importorskip("redis")
 
 from src.services.homeassistant import (
     ConnectionType,

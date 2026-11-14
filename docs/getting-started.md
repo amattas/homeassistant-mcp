@@ -25,7 +25,8 @@ HA_VERIFY_SSL=true
 DEBUG=false
 ```
 
-You can also configure optional Redis caching variables here.
+You can also enable the optional cache here: `CACHE_BACKEND=memory` for local development, or
+`DATABASE_URL` for a PostgreSQL database (see [Configuration](configuration.md)).
 
 ## Run with Docker Compose
 

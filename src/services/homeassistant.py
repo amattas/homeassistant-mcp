@@ -17,7 +17,7 @@ from .cache import CacheConfig, CacheTTL, cache_aside
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-    from .cache import RedisCache
+    from .cache import Cache
 
 logger = logging.getLogger(__name__)
 
@@ -1150,7 +1150,7 @@ class HomeAssistantClient:
         access_token: str | None = None,
         verify_ssl: bool = True,
         mcp: FastMCP | None = None,
-        cache: RedisCache | None = None,
+        cache: Cache | None = None,
     ):
         """
         Initialize Home Assistant client
@@ -1160,7 +1160,7 @@ class HomeAssistantClient:
             access_token: Long-lived access token (or from HA_TOKEN env var)
             verify_ssl: Whether to verify SSL certificates
             mcp: FastMCP instance for tool registration
-            cache: Redis cache instance for caching responses
+            cache: Cache instance for caching responses
         """
         self.url = url or os.getenv("HA_URL")
         self.access_token = access_token or os.getenv("HA_TOKEN")

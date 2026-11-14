@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "homeassistant-mcp"
-version = "1.0.1"
+version = "1.1.0"
 description = "MCP server for Home Assistant device control and monitoring"
 requires-python = ">=3.14"
 dependencies = [
@@ -23,9 +23,8 @@ dependencies = [
     # Utilities
     "python-dateutil>=3.0.0",
     "python-dotenv>=1.2.4",
-    # Caching (hiredis: optional C parser)
-    "redis>=8.1.0",
-    "hiredis>=3.5.0",
+    # Cache: PostgreSQL (sync psycopg 3 + connection pool; binary wheel ships libpq)
+    "psycopg[binary,pool]==3.3.9",
     # Production event loop and HTTP parser (uvicorn --loop uvloop --http httptools)
     "uvloop>=0.23.0",
     "httptools>=0.9.0",

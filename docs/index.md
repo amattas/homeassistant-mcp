@@ -6,7 +6,7 @@ Use this documentation to:
 
 - Understand the capabilities of the server
 - Set up Docker-based or local development environments
-- Configure environment variables and Redis caching
+- Configure environment variables and the optional PostgreSQL cache
 - Discover available MCP tools for device control and monitoring
 
 If you are integrating this server with Claude Desktop, see the getting started guide for example configuration.
