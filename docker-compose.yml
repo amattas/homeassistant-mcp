@@ -17,7 +17,6 @@ services:
       - MD5_SALT=${MD5_SALT:-}
       - HOST=0.0.0.0
       - PORT=8080
-      # Redis cache (optional)
-      - REDIS_HOST=${REDIS_HOST:-}
-      - REDIS_SSL_PORT=${REDIS_SSL_PORT:-}
-      - REDIS_KEY=${REDIS_KEY:-}
+      # Cache (optional): PostgreSQL URL, or CACHE_BACKEND=memory
+      - DATABASE_URL=${DATABASE_URL:-}
+      - CACHE_BACKEND=${CACHE_BACKEND:-}

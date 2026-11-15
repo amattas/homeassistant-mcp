@@ -17,7 +17,7 @@ A specialized Model Context Protocol (MCP) server for Home Assistant device cont
 - **Service Execution**: Call any Home Assistant service
 - **Energy Monitoring**: Track energy usage and consumption
 - **Security Checks**: Monitor locks, doors, and security sensors
-- **Redis Caching**: Optional caching for improved performance
+- **Caching**: Optional PostgreSQL-backed (or in-memory) response cache
 - **Docker Support**: Easy deployment with Docker and Docker Compose
 
 ## Prerequisites
@@ -61,11 +61,9 @@ HA_VERIFY_SSL=true
 # Debug mode
 DEBUG=false
 
-# Optional Redis caching
-REDIS_HOST=
-REDIS_PORT=6379
-REDIS_PASSWORD=
-REDIS_USE_SSL=false
+# Optional cache: a PostgreSQL database, or CACHE_BACKEND=memory for local dev
+# DATABASE_URL=postgresql://user:password@host:5432/homeassistant_mcp?sslmode=require
+# CACHE_BACKEND=memory
 ```
 
 ### 3. Run with Docker Compose
@@ -106,10 +104,9 @@ Restart Claude Desktop to activate the server.
 | `HA_TOKEN` | Yes | - | Long-lived access token |
 | `HA_VERIFY_SSL` | No | `true` | Verify SSL certificates (set to false for self-signed) |
 | `DEBUG` | No | `false` | Enable debug logging |
-| `REDIS_HOST` | No | - | Redis server hostname (for caching) |
-| `REDIS_PORT` | No | `6379` | Redis server port |
-| `REDIS_PASSWORD` | No | - | Redis password |
-| `REDIS_USE_SSL` | No | `false` | Use SSL for Redis connection |
+| `DATABASE_URL` | No | - | PostgreSQL URL for the response cache (e.g. `postgresql://user:pw@host:5432/homeassistant_mcp?sslmode=require`). Unset: no cache |
+| `CACHE_BACKEND` | No | - | Set to `memory` for a process-local cache (local development); takes precedence over `DATABASE_URL` |
+| `CACHE_TTL_<NAME>` | No | see `docs/configuration.md` | Override a cache TTL in seconds (`HA_STATES`, `HA_DEVICE_LIST`, `HA_ENTITY_LIST`, `HA_AREAS`, `HA_SERVICES`) |
 
 ## Available MCP Tools
 
@@ -186,7 +183,7 @@ The Home Assistant MCP server provides the following tools:
 - `test_connection` - Test Home Assistant connection
 - `get_cache_stats` - View cache performance metrics
 - `clear_cache` - Clear cached data
-- `get_cache_info` - View Redis server information
+- `get_cache_info` - View cache backend, database and size
 
 ## Local Development
 
@@ -212,6 +209,22 @@ export HA_TOKEN=your-token
 4. Run the server:
 ```bash
 python server.py
+```
+
+### Running the tests
+
+```bash
+pip install -e ".[dev]"
+pytest -q
+```
+
+The PostgreSQL cache tests run only when `TEST_DATABASE_URL` points at a scratch database
+(the tests delete every cache entry in it):
+
+```bash
+docker run -d --rm --name pgtest -e POSTGRES_PASSWORD=pw -p 55432:5432 postgres:18
+TEST_DATABASE_URL=postgresql://postgres:pw@localhost:55432/postgres pytest -q
+docker stop pgtest
 ```
 
 ### With Docker
@@ -305,7 +318,7 @@ Home Assistant Instance
      └─ Services
 ```
 
-Optional Redis caching layer improves performance by caching entity states.
+An optional cache (a table in the service's PostgreSQL database, or in-memory for local development) reduces calls to Home Assistant. Cache errors never fail a request: the server backs off for 30 seconds and calls Home Assistant directly.
 
 ## Advanced Features
 
@@ -346,7 +359,7 @@ Light brightness is handled as percentages (0-100%) for better usability, automa
 
 - **Automatic Caching**: Entity states are cached to reduce API calls
 - **WebSocket Fallback**: Efficient real-time updates via WebSocket
-- **Redis Support**: Optional Redis caching for multi-instance deployments
+- **Shared Cache**: Optional PostgreSQL cache shared by every replica
 - **Connection Pooling**: Reuses HTTP connections for better performance
 
 ## Entity ID Format
